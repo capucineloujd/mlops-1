@@ -2,9 +2,9 @@
 
 ## Contexte
 
-Ce projet s'appuie sur le dataset Home Credit Default Risk (Kaggle) et vise à prédire si un client sera capable de rembourser son crédit (TARGET = 0) ou non (TARGET = 1). Le jeu de données présente un fort déséquilibre de classes, les défauts représentant environ 8% des observations.
+Ce projet s'appuie sur le dataset Home Credit Default Risk (Kaggle) et vise à prédire si un client sera capable de rembourser son crédit (TARGET = 0) ou non (TARGET = 1). Le jeu de données présente un fort déséquilibre de classes, les défauts représentant seulement environ 8% des observations.
 
-L'enjeu métier central est asymétrique : accorder un crédit à un client qui fera défaut (faux négatif) est estimé dix fois plus coûteux que refuser un crédit à un client solvable (faux positif). Toutes les décisions de modélisation ont été guidées par cette contrainte.
+L'enjeu métier central est le suivant : accorder un crédit à un client qui fera défaut (faux négatif) est estimé dix fois plus coûteux que refuser un crédit à un client solvable (faux positif). Toutes les décisions de modélisation ont été guidées par cette contrainte.
 
 ## Structure du projet
 
@@ -12,15 +12,15 @@ kernel1.ipynb : exploration des données, détection et traitement des anomalies
 
 kernel2.ipynb : agrégation des tables secondaires (bureau, previous applications, installments) et enrichissement du jeu d'entraînement
 
-model.ipynb : premier modèle (Random Forest), mise en place de la métrique métier et du mécanisme d'optimisation du seuil de décision
+RandomForest.ipynb : premier modèle (Random Forest), mise en place de la métrique métier et du mécanisme d'optimisation du seuil de décision
 
 LR.ipynb : essai avec une régression logistique (non retenu)
 
 MLP.ipynb : essai avec un réseau de neurones MLP (non retenu)
 
-xgboost.ipynb : essai avec XGBoost (non retenu)
+XGBoost.ipynb : essai avec XGBoost (non retenu)
 
-lightGBM.ipynb : modèle final retenu, optimisation par Optuna, interprétabilité SHAP, enregistrement MLflow et serving REST
+LightGBM.ipynb : modèle final retenu, optimisation par Optuna, interprétabilité SHAP, enregistrement MLflow et serving REST
 
 ## Démarche de sélection du modèle
 
@@ -34,7 +34,7 @@ La métrique centrale est le coût métier total, défini comme suit :
 
     cout = 10 * faux_negatifs + 1 * faux_positifs
 
-Un faux négatif (client défaillant non détecté, prêt accordé à tort) est pénalisé dix fois plus qu'un faux positif (client solvable refusé). Cette asymétrie reflète la réalité opérationnelle du scoring de crédit.
+Un faux négatif (client défaillant non détecté) est pénalisé dix fois plus qu'un faux positif (client solvable refusé). Cette asymétrie reflète la réalité opérationnelle du scoring de crédit.
 
 Le seuil de décision n'est pas fixé arbitrairement à 0.5. Pour chaque modèle, l'ensemble des seuils possibles issus de la courbe ROC est parcouru, et le seuil minimisant le coût métier sur le jeu de validation est retenu. Pour le modèle final, ce seuil est de 0.499. Cette méthode garantit que la règle de décision est alignée sur l'objectif économique et non sur une convention statistique.
 

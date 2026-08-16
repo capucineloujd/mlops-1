@@ -130,7 +130,7 @@ def _register_serving_wrapper(model: LGBMClassifier, X_val: pd.DataFrame) -> Non
             tags={"type": "serving"},
             description="Wrapper pyfunc du modele final pour serving REST (retourne des probabilites)",
         ):
-            mlflow.pyfunc.log_model(
+            model_info = mlflow.pyfunc.log_model(
                 artifact_path="model",
                 python_model=LGBMProbaWrapper(),
                 artifacts={"lgbm_model": model_path},
@@ -138,6 +138,10 @@ def _register_serving_wrapper(model: LGBMClassifier, X_val: pd.DataFrame) -> Non
                 signature=infer_signature(X_val, model.predict_proba(X_val.iloc[:5])[:, 1]),
                 input_example=X_val.iloc[:5],
             )
+
+    client = MlflowClient()
+    serving_version = model_info.registered_model_version
+    client.set_registered_model_alias(name=SERVING_MODEL_NAME, alias="gagnant", version=serving_version)
 
 
 if __name__ == "__main__":

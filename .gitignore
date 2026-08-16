@@ -1,2 +1,6 @@
 #données car lourdes
 data/
+
+# tracking MLflow (local, régénéré à chaque run)
+mlflow.db
+mlruns/

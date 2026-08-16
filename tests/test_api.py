@@ -85,9 +85,8 @@ class TestPredict:
 
 
 class TestPredictAvecLeVraiModele:
-    """Test d'integration bout-en-bout avec le vrai modele charge depuis le
-    Model Registry MLflow. Skippe si aucun modele 'gagnant' n'est enregistre
-    (ex: environnement CI sans mlflow.db entraine)."""
+    """Test d'integration bout-en-bout avec le vrai modele charge depuis
+    Model Registry MLflow."""
 
     @pytest.fixture(autouse=True)
     def _skip_if_no_model(self):
@@ -102,10 +101,6 @@ class TestPredictAvecLeVraiModele:
         if schema is None:
             pytest.skip("Le modele enregistre n'expose pas de signature d'entree")
 
-        # construit une ligne factice : on ne teste pas la pertinence metier de
-        # la prediction, juste le cablage bout-en-bout. Chaque valeur doit
-        # respecter le type declare (double vs boolean) pour passer la
-        # validation stricte de mlflow
         record = {
             col.name: False if str(col.type) == "DataType.boolean" else 0.0
             for col in schema.inputs

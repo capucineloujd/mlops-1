@@ -56,6 +56,27 @@ Une version pyfunc du modèle final est également enregistrée sous `lightgbm-c
 
 L'interface est accessible à http://localhost:5000.
 
+## Tests et couverture
+
+Les tests unitaires et d'intégration se lancent avec :
+
+    uv run pytest tests/ --cov --cov-report=term-missing
+
+```
+Name                 Stmts   Miss  Cover   Missing
+--------------------------------------------------
+src/api.py              29      0   100%
+src/final_model.py      73     43    41%   34-45, 78-117, 121-144, 148
+--------------------------------------------------
+TOTAL                  102     43    58%
+```
+
+`src/api.py` est couvert à 100% grâce aux tests d'intégration (`tests/test_api.py`) qui exercent chaque route (`/health`, `/predict`) avec un modèle factice injecté, indépendamment du vrai modèle MLflow.
+
+`src/final_model.py` est à 41%, un taux volontairement bas : les fonctions testées unitairement (`cout_metier`, `seuil_optimal`) sont les seules à contenir de la logique métier critique et sont couvertes à 100%. Les 43 lignes non couvertes (`load_data`, `train_and_register`, `_register_serving_wrapper`) correspondent au pipeline d'entraînement et d'enregistrement MLflow - du code d'orchestration qui lit des données lourdes (`data/train_engineered.csv`, ~1,2 Go) et écrit dans le Model Registry. Le tester en continu demanderait soit de le ré-exécuter à chaque run de tests (coûteux en temps et en ressources, et non déterministe; cf. la variance de seuil observée entre deux runs), soit de le mocker intégralement, ce qui ne testerait plus que du câblage et non un vrai comportement. Ce code est donc validé manuellement (voir la section "Démarche de sélection du modèle") plutôt que par des tests automatisés.
+
+Un taux de couverture global à 58% n'est donc pas un signal d'alerte ici : il reflète une répartition volontaire entre code testé unitairement (logique métier pure) et code d'orchestration ML (entraînement, I/O, MLflow) validé autrement.
+
 ## Dépendances
 
 Les dépendances sont gérées avec uv. Pour installer l'environnement :

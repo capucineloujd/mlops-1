@@ -1,0 +1,26 @@
+services:
+  mlflow-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.mlflow
+    ports:
+      - "5001:5000"
+    volumes:
+      - ./mlflow.db:/app/mlflow.db
+      - ./mlruns:/Users/capucinejaud/mlops-1/mlruns
+
+  api:
+    build: .
+    depends_on:
+      - mlflow-server
+    ports:
+      - "8000:8000"
+    environment:
+      MLFLOW_TRACKING_URI: http://mlflow-server:5000
+      MODEL_URI: models:/lightgbm-credit-scoring-serving@gagnant
+      DECISION_THRESHOLD: "0.499"
+    volumes:
+      # les runs existants ont un artifact_uri en chemin disque local (pas
+      # mlflow-artifacts://), donc le telechargement du modele se fait en
+      # acces disque direct meme via un tracking server HTTP dedie
+      - ./mlruns:/Users/capucinejaud/mlops-1/mlruns

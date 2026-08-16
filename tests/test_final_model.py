@@ -1,9 +1,3 @@
-"""Brouillon perso (assistant) — a comparer avec ton fichier de tests.
-
-Tests unitaires sur les fonctions pures de src/final_model.py :
-cout_metier et seuil_optimal. Pas besoin de charger data/ ni MLflow ici.
-"""
-
 import numpy as np
 import pytest
 

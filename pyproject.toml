@@ -10,7 +10,7 @@ dependencies = [
     "lightgbm>=4.7.0",
     "matplotlib>=3.11.1",
     "missingno>=0.5.2",
-    "mlflow>=2.15",
+    "mlflow>=3.15.1",
     "numpy>=1.22,<=2.3",
     "optuna>=4.9.0",
     "pandas<3",

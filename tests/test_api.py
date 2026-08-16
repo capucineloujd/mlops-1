@@ -79,6 +79,12 @@ class TestPredict:
         assert response.json()["probabilities"] == []
 
     def test_records_manquant_renvoie_422(self, client):
+        # override du modele : ce test verifie la validation du body,
+        # pas le chargement du modele (FastAPI resout les Depends meme
+        # quand le body est invalide, donc get_model() serait quand meme
+        # appele si on ne le mockait pas)
+        override_model([])
+
         response = client.post("/predict", json={})
 
         assert response.status_code == 422

@@ -4,3 +4,8 @@ data/
 # tracking MLflow (local, régénéré à chaque run)
 mlflow.db
 mlruns/
+
+# rapports de couverture de tests (régénérés à chaque run)
+.coverage
+coverage.xml
+htmlcov/

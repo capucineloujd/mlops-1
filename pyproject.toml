@@ -20,3 +20,11 @@ dependencies = [
     "shap>=0.51,<0.52",
     "xgboost>=3.2.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]

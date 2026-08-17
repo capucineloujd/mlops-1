@@ -51,4 +51,6 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Deploy sur l'environnement cible simule (le runner lui-meme)
+        env:
+          API_KEY: ${{ secrets.API_KEY }}
         run: ./deploy/deploy.sh

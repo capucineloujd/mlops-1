@@ -9,3 +9,6 @@ mlruns/
 .coverage
 coverage.xml
 htmlcov/
+
+# secrets locaux 
+.env

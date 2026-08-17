@@ -19,6 +19,9 @@ services:
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
       MODEL_URI: models:/lightgbm-credit-scoring-serving@gagnant
       DECISION_THRESHOLD: "0.499"
+      # lue depuis un fichier .env local (non commit, cf. .env.example) ;
+      # jamais de valeur en dur ici
+      API_KEY: ${API_KEY:?API_KEY manquante : copie .env.example vers .env et renseigne-la}
     volumes:
       # les runs existants ont un artifact_uri en chemin disque local (pas
       # mlflow-artifacts://), donc le telechargement du modele se fait en

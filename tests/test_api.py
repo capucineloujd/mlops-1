@@ -2,7 +2,9 @@ import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 
-from api import DECISION_THRESHOLD, app, get_model
+from api import API_KEY, DECISION_THRESHOLD, app, get_model
+
+AUTH_HEADERS = {"X-API-Key": API_KEY}
 
 
 class FakeModel:
@@ -19,7 +21,11 @@ class FakeModel:
 
 @pytest.fixture
 def client():
-    with TestClient(app) as c:
+    # header d'authentification envoye par defaut sur toutes les requetes de
+    # ce client : les tests existants n'ont pas besoin de le repeter partout.
+    # Les tests d'authentification eux-memes utilisent un TestClient a part
+    # (cf. TestAuthentification) pour controler precisement les headers envoyes.
+    with TestClient(app, headers=AUTH_HEADERS) as c:
         yield c
     app.dependency_overrides.clear()
 
@@ -33,6 +39,39 @@ class TestHealth:
         response = client.get("/health")
         assert response.status_code == 200
         assert response.json() == {"status": "ok"}
+
+    def test_health_ne_necessite_pas_de_cle_api(self):
+        # /health doit rester accessible sans authentification (utilise par
+        # les orchestrateurs / le script de deploiement pour verifier que le
+        # service est en ligne, avant meme de connaitre une cle API)
+        with TestClient(app) as unauth_client:
+            response = unauth_client.get("/health")
+        assert response.status_code == 200
+
+
+class TestAuthentification:
+    def test_predict_sans_cle_api_renvoie_401(self):
+        override_model([0.5])
+        with TestClient(app) as unauth_client:
+            response = unauth_client.post("/predict", json={"records": [{"EXT_SOURCE_2": 0.5}]})
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 401
+
+    def test_predict_avec_mauvaise_cle_api_renvoie_401(self):
+        override_model([0.5])
+        with TestClient(app, headers={"X-API-Key": "mauvaise-cle"}) as bad_client:
+            response = bad_client.post("/predict", json={"records": [{"EXT_SOURCE_2": 0.5}]})
+        app.dependency_overrides.clear()
+
+        assert response.status_code == 401
+
+    def test_predict_avec_bonne_cle_api_passe(self, client):
+        override_model([0.5])
+
+        response = client.post("/predict", json={"records": [{"EXT_SOURCE_2": 0.5}]})
+
+        assert response.status_code == 200
 
 
 class TestPredict:

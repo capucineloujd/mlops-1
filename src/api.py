@@ -4,12 +4,30 @@ from typing import Any
 
 import mlflow.pyfunc
 import pandas as pd
-from fastapi import Depends, FastAPI, HTTPException
+from fastapi import Depends, FastAPI, HTTPException, Security
+from fastapi.security import APIKeyHeader
 from mlflow.exceptions import MlflowException
 from pydantic import BaseModel
 
 MODEL_URI = os.environ.get("MODEL_URI", "models:/lightgbm-credit-scoring-serving@gagnant")
 DECISION_THRESHOLD = float(os.environ.get("DECISION_THRESHOLD", "0.499"))
+
+# Cle API attendue, jamais en dur dans le code : lue depuis l'environnement
+# (variable d'env locale, secret GitHub Actions en CI/CD, cf. deploy/deploy.sh
+# et .github/workflows/tests.yml). Si absente, l'API refuse toute requete
+# protegee plutot que de tourner sans authentification par defaut.
+API_KEY = os.environ.get("API_KEY")
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def require_api_key(provided_key: str | None = Security(_api_key_header)) -> None:
+    if not API_KEY:
+        raise HTTPException(
+            status_code=500,
+            detail="API_KEY n'est pas configuree cote serveur : l'API ne peut pas etre securisee.",
+        )
+    if provided_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Cle API manquante ou invalide (header X-API-Key)")
 
 mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"))
 
@@ -93,7 +111,9 @@ def health() -> dict[str, str]:
     "/predict",
     response_model=PredictResponse,
     summary="Calcule la probabilite de defaut d'un ou plusieurs clients",
+    dependencies=[Depends(require_api_key)],
     responses={
+        401: {"model": ErrorResponse, "description": "Cle API manquante ou invalide"},
         422: {"model": ErrorResponse, "description": "Donnees d'entree invalides (colonnes manquantes ou mal typees)"},
         503: {"model": ErrorResponse, "description": "Modele indisponible (Model Registry MLflow inaccessible)"},
     },

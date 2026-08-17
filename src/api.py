@@ -1,3 +1,5 @@
+import json
+import logging
 import os
 import time
 from contextlib import asynccontextmanager
@@ -16,6 +18,21 @@ from storage import init_db, log_prediction_call
 MODEL_URI = os.environ.get("MODEL_URI", "models:/lightgbm-credit-scoring-serving@gagnant")
 DECISION_THRESHOLD = float(os.environ.get("DECISION_THRESHOLD", "0.499"))
 
+# Logging structure (une ligne JSON par evenement sur stdout) : complementaire
+# du stockage SQLite (logs.db, cf. storage.py). Le JSON stdout sert
+# l'observabilite temps reel (Docker logs, CI, futur ELK/Datadog...) ; logs.db
+# sert l'analyse a posteriori (drift, taux d'erreur, cf. monitoring.py).
+logger = logging.getLogger("scoring_api")
+logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
+if not logger.handlers:
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(_handler)
+
+
+def _log(event: str, **fields: Any) -> None:
+    logger.info(json.dumps({"event": event, **fields}))
+
 
 API_KEY = os.environ.get("API_KEY")
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -28,6 +45,8 @@ def require_api_key(provided_key: str | None = Security(_api_key_header)) -> Non
             detail="API_KEY n'est pas configuree cote serveur : l'API ne peut pas etre securisee.",
         )
     if provided_key != API_KEY:
+        # jamais la cle recue dans les logs, seulement le fait qu'elle est invalide
+        _log("auth_failed", reason="missing_or_invalid_key")
         raise HTTPException(status_code=401, detail="Cle API manquante ou invalide (header X-API-Key)")
 
 mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"))
@@ -49,8 +68,9 @@ async def lifespan(_: FastAPI):
     init_db()
     try:
         _load_model()
-    except MlflowException:
-        pass
+        _log("model_loaded", model_uri=MODEL_URI)
+    except MlflowException as exc:
+        _log("model_load_failed", model_uri=MODEL_URI, reason=str(exc))
     yield
 
 
@@ -71,6 +91,7 @@ def get_model() -> mlflow.pyfunc.PyFuncModel:
     try:
         return _load_model()
     except MlflowException as exc:
+        _log("model_unavailable", model_uri=MODEL_URI, reason=str(exc))
         raise HTTPException(
             status_code=503,
             detail=f"Modele indisponible dans le Model Registry MLflow : {exc.message}",
@@ -93,6 +114,7 @@ def _validate_business_rules(records: list[dict[str, Any]]) -> None:
             value = record[field]
 
             if isinstance(value, bool) or not isinstance(value, (int, float)):
+                _log("validation_rejected", field=field, index=i, reason="wrong_type")
                 raise HTTPException(
                     status_code=422,
                     detail=f"Enregistrement {i} : '{field}' doit etre numerique, recu {value!r}",
@@ -105,6 +127,7 @@ def _validate_business_rules(records: list[dict[str, Any]]) -> None:
             }[op]
 
             if not valid:
+                _log("validation_rejected", field=field, index=i, reason="out_of_range")
                 raise HTTPException(
                     status_code=422,
                     detail=f"Enregistrement {i} : '{field}'={value} hors de la plage attendue (doit etre {op} {bound})",
@@ -162,18 +185,28 @@ def predict(
             threshold=DECISION_THRESHOLD,
         )
     except HTTPException as exc:
+        latency_ms = round((time.perf_counter() - start) * 1000, 2)
+        _log("prediction_failed", n_records=len(request.records), latency_ms=latency_ms, reason=str(exc.detail))
         log_prediction_call(
             request.records,
             status="error",
-            latency_ms=round((time.perf_counter() - start) * 1000, 2),
+            latency_ms=latency_ms,
             error_detail=str(exc.detail),
         )
         raise
 
+    latency_ms = round((time.perf_counter() - start) * 1000, 2)
+    _log(
+        "prediction",
+        n_records=len(request.records),
+        n_accorde=decisions.count("ACCORDE"),
+        n_refuse=decisions.count("REFUSE"),
+        latency_ms=latency_ms,
+    )
     log_prediction_call(
         request.records,
         status="success",
         output=response.model_dump(),
-        latency_ms=round((time.perf_counter() - start) * 1000, 2),
+        latency_ms=latency_ms,
     )
     return response

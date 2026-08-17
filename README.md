@@ -56,6 +56,12 @@ Une version pyfunc du modèle final est également enregistrée sous `lightgbm-c
 
 L'interface est accessible à http://localhost:5000.
 
+## Dashboard de monitoring
+
+    uv run streamlit run src/dashboard.py
+
+Le dashboard (taux d'erreur, latence, dérive des données) est accessible à http://localhost:8501.
+
 ## Tests et couverture
 
 Les tests unitaires et d'intégration se lancent avec :

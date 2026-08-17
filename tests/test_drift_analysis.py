@@ -68,9 +68,6 @@ class TestRunDriftReportEtSummarize:
         result = run_drift_report(reference_df, current)
         summary = summarize(result)
 
-        # la valeur brute depend de la methode choisie par evidently (distance
-        # ou p-value, dont le sens de comparaison au seuil s'inverse) : seul
-        # le flag agrege drifted_columns est teste ici, pas la valeur brute
         assert "AMT_INCOME_TOTAL" in summary["drifted_columns"]
         assert summary["n_drifted_columns"] == 1
 

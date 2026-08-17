@@ -7,7 +7,7 @@ from functools import lru_cache
 from typing import Any
 
 import mlflow.lightgbm
-import pandas as pd
+import numpy as np
 from fastapi import Depends, FastAPI, HTTPException, Security
 from fastapi.security import APIKeyHeader
 from lightgbm import LGBMClassifier
@@ -21,7 +21,10 @@ from storage import init_db, log_prediction_call
 # wrapper mlflow.pyfunc : profiling (src/profile_inference.py) a montre que
 # le wrapper pyfunc ajoutait ~77% de temps de predict en pur overhead
 # (enforcement de schema, indirection Python) par rapport au calcul reel du
-# modele. Voir la section "Optimisation des performances" du README.
+# modele. Le predict lui-meme appelle model.booster_.predict() sur un tableau
+# numpy construit a la main (pas pd.DataFrame + LGBMClassifier.predict_proba) :
+# ~15x plus rapide, resultats identiques (verifie avec np.allclose). Voir la
+# section "Optimisation des performances" du README.
 MODEL_URI = os.environ.get("MODEL_URI", "models:/lightgbm-credit-scoring@gagnant")
 DECISION_THRESHOLD = float(os.environ.get("DECISION_THRESHOLD", "0.499"))
 
@@ -132,6 +135,27 @@ def _validate_business_rules(records: list[dict[str, Any]]) -> None:
                 )
 
 
+def _build_feature_array(records: list[dict[str, Any]], feature_names: list[str]) -> np.ndarray:
+    """Construit le tableau numpy attendu par le Booster, dans l'ordre exact
+    des features d'entrainement. Pas de pd.DataFrame : c'est justement ce
+    detour par pandas + LGBMClassifier qu'on court-circuite ici (cf. profiling)."""
+    if not records:
+        return np.empty((0, len(feature_names)), dtype=np.float64)
+    try:
+        return np.array(
+            [[record[name] for name in feature_names] for record in records],
+            dtype=np.float64,
+        )
+    except KeyError as exc:
+        raise HTTPException(
+            status_code=422, detail=f"Champ manquant dans un enregistrement : {exc}"
+        ) from exc
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=422, detail=f"Donnees invalides pour le modele : {exc}"
+        ) from exc
+
+
 class PredictRequest(BaseModel):
     records: list[dict[str, Any]]
 
@@ -166,15 +190,18 @@ def predict(
     try:
         _validate_business_rules(request.records)
 
-        df = pd.DataFrame(request.records)
+        feature_array = _build_feature_array(request.records, model.feature_name_)
 
-        try:
-            probabilities = list(model.predict_proba(df)[:, 1])
-        except (LightGBMError, ValueError) as exc:
-            raise HTTPException(
-                status_code=422,
-                detail=f"Donnees d'entree invalides pour le modele : {exc}",
-            ) from exc
+        if len(request.records) == 0:
+            probabilities: list[float] = []
+        else:
+            try:
+                probabilities = list(model.booster_.predict(feature_array))
+            except LightGBMError as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Donnees d'entree invalides pour le modele : {exc}",
+                ) from exc
 
         decisions = ["REFUSE" if p > DECISION_THRESHOLD else "ACCORDE" for p in probabilities]
         response = PredictResponse(

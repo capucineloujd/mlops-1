@@ -56,6 +56,35 @@ Une version pyfunc du modèle final est également enregistrée sous `lightgbm-c
 
 L'interface est accessible à http://localhost:5000.
 
+## Optimisation des performances d'inférence
+
+Un profiling (`uv run python src/profile_inference.py`) a décomposé `/predict` en étapes chronométrées séparément, sur le modèle réel :
+
+| Étape | Moyenne | p95 |
+|---|---|---|
+| Construction du DataFrame | 2,42ms | 2,60ms |
+| Predict via wrapper `mlflow.pyfunc` (ancien chemin) | 5,00ms | 5,45ms |
+| Predict LightGBM natif (sans `mlflow.pyfunc`) | 1,13ms | 1,30ms |
+
+Constat : le calcul du modèle lui-même ne prend que 1,13ms, mais le wrapper `mlflow.pyfunc` représentait 77,5% du temps de predict.
+
+**Optimisation appliquée** : `src/api.py` charge désormais le modèle LightGBM natif (`mlflow.lightgbm.load_model`) au lieu du wrapper `mlflow.pyfunc`: même modèle, mêmes poids donc aucune perte de précision. Mesuré en conditions réelles sur `/predict` (`uv run python src/benchmark_predict.py`, 100 requêtes HTTP, même payload, avant/après) :
+
+| | Moyenne | Médiane | p95 |
+|---|---|---|---|
+| Avant (wrapper `mlflow.pyfunc`) | 18,68ms | 15,03ms | 73,47ms |
+| Après (modèle natif) | 6,42ms | 6,35ms | 6,97ms |
+
+Résultat : env 3x plus rapide en moyenne, et la variance en queue de distribution (p95) est passée de 73ms à 7ms.
+
+Pour reproduire la mesure "avant" : `benchmark_predict.py` mesure `/predict` tel qu'il existe dans le code actuel (donc la version optimisée). Le commit `38a1613` (juste avant cette optimisation) contient encore l'ancien code base sur `mlflow.pyfunc` :
+
+    git checkout 38a1613 -- src/api.py
+    # relancer l'API, puis uv run python src/benchmark_predict.py
+    git checkout HEAD -- src/api.py
+
+**Optimisations envisagées mais non retenues** : réduire la complexité du modèle aurait dégradé le coût métier déjà optimisé (cf. "Démarche de sélection du modèle") pour un gain marginal, vu que le calcul natif est déjà sous 1,5ms : ça a été estimé non justifié.
+
 ## Dashboard de monitoring
 
     uv run streamlit run src/dashboard.py

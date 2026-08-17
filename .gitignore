@@ -15,3 +15,7 @@ htmlcov/
 
 # logs d'appels API (regenere a chaque run, cf. src/storage.py)
 logs.db
+
+# bytecode Python compile
+__pycache__/
+*.pyc

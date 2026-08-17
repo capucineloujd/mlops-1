@@ -66,9 +66,13 @@ Un profiling (`uv run python src/profile_inference.py`) a décomposé `/predict`
 | Predict via wrapper `mlflow.pyfunc` (ancien chemin) | 5,00ms | 5,45ms |
 | Predict LightGBM natif (sans `mlflow.pyfunc`) | 1,13ms | 1,30ms |
 
-Constat : le calcul du modèle lui-même ne prend que 1,13ms, mais le wrapper `mlflow.pyfunc` représentait 77,5% du temps de predict.
+Constat fait : le calcul du modèle lui-même ne prend que 1,13ms, mais le wrapper `mlflow.pyfunc` représentait 77,5% du temps de predict.
 
-**Optimisation appliquée** : `src/api.py` charge désormais le modèle LightGBM natif (`mlflow.lightgbm.load_model`) au lieu du wrapper `mlflow.pyfunc`: même modèle, mêmes poids donc aucune perte de précision. Mesuré en conditions réelles sur `/predict` (`uv run python src/benchmark_predict.py`, 100 requêtes HTTP, même payload, avant/après) :
+Un profiling outillé plus fin (`uv run python src/profile_cprofile.py`, via `cProfile`) confirme et localise précisément la source de cet overhead : sur 200 appels, le chemin `mlflow.pyfunc` déclenche 20,3 millions d'appels de fonction Python, contre 1,3 million pour le modèle natif (16x moins). Le vrai goulot est la fonction `_enforce_named_col_schema` de mlflow, qui appelle `pandas.Index.union()` une fois par colonne du schéma - soit ~710 appels à cette opération par requête sur ce modèle (710 features), un pattern O(n_colonnes) coûteux pour l'enforcement de schéma sur un modèle aussi large.
+
+* Découverte annexe (non corrigée, documentée) : ce profiling a aussi révélé que LightGBM sanitize en interne les espaces/virgules dans les noms de colonnes au moment de l'entraînement (ex: `"Business Entity Type 2"` devient `"Business_Entity_Type_2"` dans `model.feature_name_`), alors que le schéma enregistré par `mlflow.pyfunc` (via `infer_signature`) garde les noms originaux avec espaces. Les deux représentations diffèrent sur 143 des 710 colonnes (toutes catégorielles one-hot-encodées). Le modèle natif utilisé en production accepte les deux formes sans erreur dans nos tests, mais un appelant qui construirait ses requêtes à partir du schéma documenté par mlflow (noms avec espaces) plutôt que de `feature_name_` pourrait, en théorie, envoyer des noms de colonnes qui ne correspondent pas exactement à ce que le modèle attend en interne. À surveiller si des colonnes catégorielles sont un jour rejetées de façon inattendue.
+
+* Optimisation appliquée : `src/api.py` charge désormais le modèle LightGBM natif (`mlflow.lightgbm.load_model`) au lieu du wrapper `mlflow.pyfunc`: même modèle, mêmes poids donc aucune perte de précision. Mesuré en conditions réelles sur `/predict` (`uv run python src/benchmark_predict.py`, 100 requêtes HTTP, même payload, avant/après) :
 
 | | Moyenne | Médiane | p95 |
 |---|---|---|---|
@@ -83,7 +87,18 @@ Pour reproduire la mesure "avant" : `benchmark_predict.py` mesure `/predict` tel
     # relancer l'API, puis uv run python src/benchmark_predict.py
     git checkout HEAD -- src/api.py
 
-**Optimisations envisagées mais non retenues** : réduire la complexité du modèle aurait dégradé le coût métier déjà optimisé (cf. "Démarche de sélection du modèle") pour un gain marginal, vu que le calcul natif est déjà sous 1,5ms : ça a été estimé non justifié.
+* Deuxième round d'optimisation : le profiling initial montrait que la construction du `pd.DataFrame` (2,42ms) coûtait à elle seule plus que le calcul natif du modèle (1,13ms). En contournant aussi pandas et la couche `LGBMClassifier.predict_proba` - appel direct de `model.booster_.predict()` sur un tableau numpy construit à la main, dans l'ordre exact de `model.feature_name_` - la comparaison isolée montre un gain supplémentaire de ~15x (`predict_proba(df)` : 1,09ms vs `booster_.predict(array)` : 0,07ms, résultats numériquement identiques, vérifié avec `np.allclose`).
+
+Mesuré en conditions réelles sur `/predict` complet :
+
+| | Moyenne | Médiane | p95 |
+|---|---|---|---|
+| Round 1 (modèle natif via `predict_proba(df)`) | 6,42ms | 6,35ms | 6,97ms |
+| Round 2 (`booster_.predict` sur tableau numpy) | 3,67ms | 3,57ms | 4,42ms |
+
+Au total depuis le point de départ : 18,68ms → 3,67ms, soit environ 5x plus rapide!
+
+* Optimisations envisagées mais non retenues : réduire la complexité du modèle aurait dégradé le coût métier déjà optimisé (cf. "Démarche de sélection du modèle") pour un gain marginal, vu que le calcul natif est déjà sous 1,5ms : ça a été estimé non justifié.
 
 ## Justification de la configuration finale
 
@@ -91,7 +106,7 @@ Pour reproduire la mesure "avant" : `benchmark_predict.py` mesure `/predict` tel
 
 * Hardware : CPU uniquement, pas de GPU : LightGBM est un ensemble d'arbres de décision, pas un réseau de neurones : l'inférence sur CPU est déjà optimale pour ce type de modèle. Avec un modèle à 398 arbres inférant en env 1ms sur un CPU standard, un GPU n'apporterait aucun bénéfice pour ce cas d'usage et ajouterait un coût d'infrastructure et de complexité de déploiement injustifiés.
 
-* API : FastAPI + Uvicorn : Choisi pour la documentation Swagger générée automatiquement, la validation de schéma native (Pydantic), et le support asynchrone — largement suffisant pour ce volume de requêtes, sans le poids d'un framework plus lourd.
+* API : FastAPI + Uvicorn : Choisi pour la documentation Swagger générée automatiquement, la validation de schéma native (Pydantic), et le support asynchrone - largement suffisant pour ce volume de requêtes, sans le poids d'un framework plus lourd.
 
 * Stockage des logs et du tracking MLflow : SQLite : Zéro administration, suffisant pour le volume d'un PoC local (cf. section "Points de vigilance"). Une base de production à plus grande échelle nécessiterait sans doute PostgreSQL ou équivalent, mais ce serait disproportionné ici.
 

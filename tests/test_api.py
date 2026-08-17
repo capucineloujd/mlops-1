@@ -1,4 +1,5 @@
 import sqlite3
+from typing import ClassVar
 
 import numpy as np
 import pytest
@@ -10,15 +11,19 @@ AUTH_HEADERS = {"X-API-Key": API_KEY}
 
 
 class FakeModel:
-    """Modele factice"""
+    """Modele factice. Reproduit l'interface reellement utilisee par
+    src/api.py depuis le bypass de pandas/sklearn (feature_name_ +
+    booster_.predict sur un tableau numpy), cf. profiling."""
+
+    feature_name_: ClassVar[list[str]] = ["EXT_SOURCE_2"]
 
     def __init__(self, probabilities):
         self.probabilities = probabilities
+        self.booster_ = self
 
-    def predict_proba(self, df):
-        assert len(df) == len(self.probabilities)
-        proba_class_1 = np.array(self.probabilities)
-        return np.column_stack([1 - proba_class_1, proba_class_1])
+    def predict(self, arr):
+        assert len(arr) == len(self.probabilities)
+        return np.array(self.probabilities)
 
 
 @pytest.fixture

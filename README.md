@@ -68,6 +68,10 @@ Un profiling (`uv run python src/profile_inference.py`) a décomposé `/predict`
 
 Constat : le calcul du modèle lui-même ne prend que 1,13ms, mais le wrapper `mlflow.pyfunc` représentait 77,5% du temps de predict.
 
+Un profiling outillé plus fin (`uv run python src/profile_cprofile.py`, via `cProfile`) confirme et localise précisément la source de cet overhead : sur 200 appels, le chemin `mlflow.pyfunc` déclenche **20,3 millions d'appels de fonction Python**, contre 1,3 million pour le modèle natif (16x moins). Le vrai goulot est la fonction `_enforce_named_col_schema` de mlflow, qui appelle `pandas.Index.union()` une fois par colonne du schéma — soit ~710 appels à cette opération par requête sur ce modèle (710 features), un pattern O(n_colonnes) coûteux pour l'enforcement de schéma sur un modèle aussi large.
+
+**Découverte annexe (non corrigée, documentée)** : ce profiling a aussi révélé que LightGBM sanitize en interne les espaces/virgules dans les noms de colonnes au moment de l'entraînement (ex: `"Business Entity Type 2"` devient `"Business_Entity_Type_2"` dans `model.feature_name_`), alors que le schéma enregistré par `mlflow.pyfunc` (via `infer_signature`) garde les noms originaux avec espaces. Les deux représentations diffèrent sur 143 des 710 colonnes (toutes catégorielles one-hot-encodées). Le modèle natif utilisé en production accepte les deux formes sans erreur dans nos tests, mais un appelant qui construirait ses requêtes à partir du schéma documenté par mlflow (noms avec espaces) plutôt que de `feature_name_` pourrait, en théorie, envoyer des noms de colonnes qui ne correspondent pas exactement à ce que le modèle attend en interne. À surveiller si des colonnes catégorielles sont un jour rejetées de façon inattendue.
+
 **Optimisation appliquée** : `src/api.py` charge désormais le modèle LightGBM natif (`mlflow.lightgbm.load_model`) au lieu du wrapper `mlflow.pyfunc`: même modèle, mêmes poids donc aucune perte de précision. Mesuré en conditions réelles sur `/predict` (`uv run python src/benchmark_predict.py`, 100 requêtes HTTP, même payload, avant/après) :
 
 | | Moyenne | Médiane | p95 |

@@ -54,15 +54,12 @@ def cout_metier(y_true, y_pred, cout_fn: int = 10, cout_fp: int = 1) -> float:
 
 # Seuil qui minimise le cout métier 
 def seuil_optimal(y_true, y_pred_proba) -> float:
-    # drop_intermediate=False : sklearn elague par defaut les seuils qui ne
-    # changent pas la courbe ROC/AUC, mais ceux-ci peuvent tout de meme etre
-    # optimaux pour notre cout metier asymetrique (FN != FP)
     _, _, thresholds = roc_curve(y_true, y_pred_proba, drop_intermediate=False)
     couts = [cout_metier(y_true, (y_pred_proba > t).astype(int)) for t in thresholds]
     return float(thresholds[np.argmin(couts)])
 
 
-# Wrapper pyfunc : retourne des probabilites de defaut (pas des classes), pour un serving REST agnostique du client 
+# Wrapper pyfunc : retourne des probabilites de defaut, pour un serving REST agnostique du client 
 class LGBMProbaWrapper(mlflow.pyfunc.PythonModel):
 
     def load_context(self, context):
@@ -73,7 +70,7 @@ class LGBMProbaWrapper(mlflow.pyfunc.PythonModel):
 
 
 def train_and_register(data_path: str = "data/train_engineered.csv") -> None:
-    """Entraine le modele final, l'enregistre dans le Model Registry avec l'alias `gagnant`, puis enregistre le wrapper
+    """Entraine le modele final, l'enregistre dans le Model Registry avec l'alias gagnant, puis enregistre le wrapper
     pyfunc de serving associé."""
     X, y = load_data(data_path)
     X_train, X_val, y_train, y_val = train_test_split(

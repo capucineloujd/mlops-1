@@ -6,6 +6,8 @@ from statistics import mean
 
 from scipy.stats import ks_2samp
 
+from storage import init_db
+
 ERROR_RATE_THRESHOLD = float(os.environ.get("ERROR_RATE_THRESHOLD", "0.10"))
 LATENCY_P95_THRESHOLD_MS = float(os.environ.get("LATENCY_P95_THRESHOLD_MS", "500"))
 DRIFT_PVALUE_THRESHOLD = float(os.environ.get("DRIFT_PVALUE_THRESHOLD", "0.05"))
@@ -32,6 +34,7 @@ class Report:
 
 
 def _load_recent_calls(db_path: str, limit: int) -> list[sqlite3.Row]:
+    init_db(db_path)  # garantit que la table existe, meme sur une base fraiche/vide
     with sqlite3.connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(

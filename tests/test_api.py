@@ -1,3 +1,5 @@
+import sqlite3
+
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
@@ -32,6 +34,50 @@ def client():
 
 def override_model(probabilities):
     app.dependency_overrides[get_model] = lambda: FakeModel(probabilities)
+
+
+class TestStockageDesAppels:
+    """Verifie que chaque appel /predict (succes et echec) est bien
+    persiste dans logs.db, cf. src/storage.py."""
+
+    @pytest.fixture
+    def logged_client(self, tmp_path, monkeypatch):
+        db_path = str(tmp_path / "logs.db")
+        monkeypatch.setenv("LOGS_DB_PATH", db_path)
+
+        with TestClient(app, headers=AUTH_HEADERS) as c:
+            yield c, db_path
+        app.dependency_overrides.clear()
+
+    def test_appel_reussi_est_enregistre(self, logged_client):
+        client, db_path = logged_client
+        override_model([0.2])
+
+        client.post("/predict", json={"records": [{"EXT_SOURCE_2": 0.5}]})
+
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute(
+                "SELECT status, latency_ms, output_json FROM prediction_logs"
+            ).fetchone()
+
+        assert row[0] == "success"
+        assert row[1] is not None and row[1] >= 0
+        assert row[2] is not None
+
+    def test_appel_en_erreur_est_enregistre(self, logged_client):
+        client, db_path = logged_client
+        override_model([0.2])
+
+        client.post("/predict", json={"records": [{"AMT_INCOME_TOTAL": 0}]})
+
+        with sqlite3.connect(db_path) as conn:
+            row = conn.execute(
+                "SELECT status, output_json, error_detail FROM prediction_logs"
+            ).fetchone()
+
+        assert row[0] == "error"
+        assert row[1] is None
+        assert "AMT_INCOME_TOTAL" in row[2]
 
 
 class TestHealth:

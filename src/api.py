@@ -13,10 +13,15 @@ from fastapi.security import APIKeyHeader
 from mlflow.exceptions import MlflowException
 from pydantic import BaseModel
 
+from storage import init_db, log_prediction_call
+
 MODEL_URI = os.environ.get("MODEL_URI", "models:/lightgbm-credit-scoring-serving@gagnant")
 DECISION_THRESHOLD = float(os.environ.get("DECISION_THRESHOLD", "0.499"))
 
-
+# Logging structure (une ligne JSON par evenement sur stdout) : complementaire
+# du stockage SQLite (logs.db, cf. storage.py). Le JSON stdout sert
+# l'observabilite temps reel (Docker logs, CI, futur ELK/Datadog...) ; logs.db
+# sert l'analyse a posteriori (drift, taux d'erreur, cf. monitoring.py).
 logger = logging.getLogger("scoring_api")
 logger.setLevel(os.environ.get("LOG_LEVEL", "INFO"))
 if not logger.handlers:
@@ -54,7 +59,13 @@ def _load_model() -> mlflow.pyfunc.PyFuncModel:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # charge le modele une seule fois, au demarrage de l'API
+    # charge le modele une seule fois, au demarrage de l'API (pas a la
+    # premiere requete) : les requetes /predict n'ont plus jamais a payer
+    # le cout du chargement. Best-effort : si le Model Registry est
+    # indisponible au demarrage, l'API demarre quand meme (utile pour que
+    # /health reste joignable) et le chargement sera retente a la premiere
+    # requete /predict via get_model().
+    init_db()
     try:
         _load_model()
         _log("model_loaded", model_uri=MODEL_URI)
@@ -152,33 +163,50 @@ def health() -> dict[str, str]:
 def predict(
     request: PredictRequest, model: mlflow.pyfunc.PyFuncModel = Depends(get_model)
 ) -> PredictResponse:
-    _validate_business_rules(request.records)
-
-    df = pd.DataFrame(request.records)
     start = time.perf_counter()
 
     try:
-        probabilities = list(model.predict(df))
-    except MlflowException as exc:
-        _log("prediction_failed", n_records=len(request.records), reason=str(exc))
-        raise HTTPException(
-            status_code=422,
-            detail=f"Donnees d'entree invalides pour le modele : {exc.message}",
-        ) from exc
+        _validate_business_rules(request.records)
 
-    decisions = ["REFUSE" if p > DECISION_THRESHOLD else "ACCORDE" for p in probabilities]
+        df = pd.DataFrame(request.records)
+
+        try:
+            probabilities = list(model.predict(df))
+        except MlflowException as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Donnees d'entree invalides pour le modele : {exc.message}",
+            ) from exc
+
+        decisions = ["REFUSE" if p > DECISION_THRESHOLD else "ACCORDE" for p in probabilities]
+        response = PredictResponse(
+            probabilities=[float(p) for p in probabilities],
+            decisions=decisions,
+            threshold=DECISION_THRESHOLD,
+        )
+    except HTTPException as exc:
+        latency_ms = round((time.perf_counter() - start) * 1000, 2)
+        _log("prediction_failed", n_records=len(request.records), latency_ms=latency_ms, reason=str(exc.detail))
+        log_prediction_call(
+            request.records,
+            status="error",
+            latency_ms=latency_ms,
+            error_detail=str(exc.detail),
+        )
+        raise
+
     latency_ms = round((time.perf_counter() - start) * 1000, 2)
-
     _log(
         "prediction",
         n_records=len(request.records),
-        n_refuse=decisions.count("REFUSE"),
         n_accorde=decisions.count("ACCORDE"),
+        n_refuse=decisions.count("REFUSE"),
         latency_ms=latency_ms,
     )
-
-    return PredictResponse(
-        probabilities=[float(p) for p in probabilities],
-        decisions=decisions,
-        threshold=DECISION_THRESHOLD,
+    log_prediction_call(
+        request.records,
+        status="success",
+        output=response.model_dump(),
+        latency_ms=latency_ms,
     )
+    return response

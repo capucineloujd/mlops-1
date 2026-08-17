@@ -98,6 +98,8 @@ Mesuré en conditions réelles sur `/predict` complet :
 
 Au total depuis le point de départ : 18,68ms → 3,67ms, soit environ 5x plus rapide!
 
+Aucune régression de précision : `tests/test_no_regression.py` vérifie automatiquement, à chaque run de la CI, que les prédictions sont numériquement identiques avant/après sur 30 échantillons variés.
+
 * Optimisations envisagées mais non retenues : réduire la complexité du modèle aurait dégradé le coût métier déjà optimisé (cf. "Démarche de sélection du modèle") pour un gain marginal, vu que le calcul natif est déjà sous 1,5ms : ça a été estimé non justifié.
 
 ## Justification de la configuration finale

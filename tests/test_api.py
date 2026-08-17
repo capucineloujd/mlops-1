@@ -90,6 +90,94 @@ class TestPredict:
         assert response.status_code == 422
 
 
+class TestValidationMetier:
+    """Cas critiques demandes par la consigne : champs obligatoires manquants,
+    valeurs hors plage, types incorrects. Utilise le FakeModel pour tester la
+    validation elle-meme, independamment du vrai modele MLflow."""
+
+    def test_revenu_nul_rejete(self, client):
+        override_model([0.5])
+
+        response = client.post(
+            "/predict", json={"records": [{"AMT_INCOME_TOTAL": 0}]}
+        )
+
+        assert response.status_code == 422
+        assert "AMT_INCOME_TOTAL" in response.json()["detail"]
+
+    def test_revenu_negatif_rejete(self, client):
+        override_model([0.5])
+
+        response = client.post(
+            "/predict", json={"records": [{"AMT_INCOME_TOTAL": -1000}]}
+        )
+
+        assert response.status_code == 422
+
+    def test_credit_negatif_rejete(self, client):
+        override_model([0.5])
+
+        response = client.post("/predict", json={"records": [{"AMT_CREDIT": -500}]})
+
+        assert response.status_code == 422
+
+    def test_age_impossible_rejete(self, client):
+        # DAYS_BIRTH doit etre negatif (convention Home Credit : nombre de
+        # jours avant la demande de credit). Une valeur positive ou nulle
+        # correspondrait a un client pas encore ne.
+        override_model([0.5])
+
+        response = client.post("/predict", json={"records": [{"DAYS_BIRTH": 5}]})
+
+        assert response.status_code == 422
+        assert "DAYS_BIRTH" in response.json()["detail"]
+
+    def test_nombre_enfants_negatif_rejete(self, client):
+        override_model([0.5])
+
+        response = client.post("/predict", json={"records": [{"CNT_CHILDREN": -3}]})
+
+        assert response.status_code == 422
+
+    def test_texte_a_la_place_d_un_chiffre_rejete(self, client):
+        override_model([0.5])
+
+        response = client.post(
+            "/predict", json={"records": [{"AMT_INCOME_TOTAL": "beaucoup"}]}
+        )
+
+        assert response.status_code == 422
+        assert "AMT_INCOME_TOTAL" in response.json()["detail"]
+
+    def test_champ_critique_absent_ne_bloque_pas(self, client):
+        # les regles metier ne s'appliquent que si le champ est present :
+        # un record qui ne contient pas ces champs n'est pas rejete a ce
+        # niveau (le schema complet reste valide par MLflow au moment du
+        # predict, hors scope de ce test avec le FakeModel)
+        override_model([0.5])
+
+        response = client.post("/predict", json={"records": [{"EXT_SOURCE_2": 0.5}]})
+
+        assert response.status_code == 200
+
+    def test_deuxieme_enregistrement_invalide_est_detecte(self, client):
+        # la validation doit parcourir tous les records, pas seulement le premier
+        override_model([0.5, 0.5])
+
+        response = client.post(
+            "/predict",
+            json={
+                "records": [
+                    {"AMT_INCOME_TOTAL": 50000},
+                    {"AMT_INCOME_TOTAL": 0},
+                ]
+            },
+        )
+
+        assert response.status_code == 422
+        assert "Enregistrement 1" in response.json()["detail"]
+
+
 class TestPredictAvecLeVraiModele:
     """Test d'integration bout-en-bout avec le vrai modele charge depuis
     Model Registry MLflow."""
@@ -111,6 +199,16 @@ class TestPredictAvecLeVraiModele:
             col.name: False if str(col.type) == "DataType.boolean" else 0.0
             for col in schema.inputs
         }
+        # 0.0 partout n'est pas metier-plausible pour ces champs (cf.
+        # TestValidationMetier) : on les corrige pour un client factice mais valide
+        record.update(
+            {
+                "AMT_INCOME_TOTAL": 50000.0,
+                "AMT_CREDIT": 100000.0,
+                "DAYS_BIRTH": -12000.0,
+                "CNT_CHILDREN": 0.0,
+            }
+        )
 
         response = client.post("/predict", json={"records": [record]})
 
@@ -118,3 +216,11 @@ class TestPredictAvecLeVraiModele:
         body = response.json()
         assert 0.0 <= body["probabilities"][0] <= 1.0
         assert body["decisions"][0] in {"ACCORDE", "REFUSE"}
+
+    def test_champs_obligatoires_manquants_rejete_par_le_vrai_schema(self, client):
+        # contre le vrai schema de production (710 colonnes attendues) : un
+        # record quasiment vide doit etre rejete par l'enforcement de schema
+        # MLflow, pas silencieusement accepte avec des colonnes manquantes
+        response = client.post("/predict", json={"records": [{"EXT_SOURCE_2": 0.5}]})
+
+        assert response.status_code == 422

@@ -40,6 +40,45 @@ def get_model() -> mlflow.pyfunc.PyFuncModel:
         ) from exc
 
 
+# Regles de plausibilite metier pour les champs les plus critiques, verifiees
+# uniquement si le champ est present dans le record (le schema complet, lui,
+# est valide par MLflow au moment de l'inference). Objectif : rejeter tot les
+# entrees absurdes (age negatif, revenu nul, texte a la place d'un chiffre)
+# plutot que de laisser le modele produire une prediction sur du n'importe quoi.
+_BUSINESS_RULES: dict[str, tuple[str, Any]] = {
+    "AMT_INCOME_TOTAL": (">", 0),  # revenu strictement positif
+    "AMT_CREDIT": (">", 0),  # montant du credit strictement positif
+    "DAYS_BIRTH": ("<", 0),  # convention Home Credit : jours negatifs (age > 0)
+    "CNT_CHILDREN": (">=", 0),  # nombre d'enfants positif ou nul
+}
+
+
+def _validate_business_rules(records: list[dict[str, Any]]) -> None:
+    for i, record in enumerate(records):
+        for field, (op, bound) in _BUSINESS_RULES.items():
+            if field not in record:
+                continue
+            value = record[field]
+
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Enregistrement {i} : '{field}' doit etre numerique, recu {value!r}",
+                )
+
+            valid = {
+                ">": value > bound,
+                ">=": value >= bound,
+                "<": value < bound,
+            }[op]
+
+            if not valid:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Enregistrement {i} : '{field}'={value} hors de la plage attendue (doit etre {op} {bound})",
+                )
+
+
 class PredictRequest(BaseModel):
     records: list[dict[str, Any]]
 
@@ -67,6 +106,8 @@ def health() -> dict[str, str]:
 def predict(
     request: PredictRequest, model: mlflow.pyfunc.PyFuncModel = Depends(get_model)
 ) -> PredictResponse:
+    _validate_business_rules(request.records)
+
     df = pd.DataFrame(request.records)
 
     try:

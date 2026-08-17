@@ -32,3 +32,23 @@ jobs:
         with:
           name: coverage-report
           path: coverage.xml
+
+  build-docker:
+    needs: pytest
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build API image
+        run: docker build -t mlops1-api .
+
+  deploy:
+    needs: build-docker
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy sur l'environnement cible simule (le runner lui-meme)
+        run: ./deploy/deploy.sh

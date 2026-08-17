@@ -98,7 +98,11 @@ Mesuré en conditions réelles sur `/predict` complet :
 
 Au total depuis le point de départ : 18,68ms → 3,67ms, soit environ 5x plus rapide!
 
-Aucune régression de précision : `tests/test_no_regression.py` vérifie automatiquement, à chaque run de la CI, que les prédictions sont numériquement identiques avant/après sur 30 échantillons variés.
+* Impact sur la précision : aucun. Contrairement à une optimisation type quantification ou distillation, aucune des deux optimisations n'altère le calcul du modèle lui-même : même modèle, mêmes poids, seul le chemin d'accès en amont change. varification concrète:
+
+- Round 1 (bypass `mlflow.pyfunc`) : le modèle natif chargé (`lightgbm-credit-scoring`) et le wrapper pyfunc (`lightgbm-credit-scoring-serving`) proviennent du même run d'entraînement (vérifié via les `run_id` MLflow), donc des mêmes poids.
+- Round 2 (bypass pandas/sklearn) : `model.booster_.predict()` appelle directement le même booster que `LGBMClassifier.predict_proba()` en interne, sans transformation intermédiaire des valeurs.
+- Validation numérique (`tests/test_no_regression.py`, automatisée en CI) : comparaison des probabilités retournées par l'ancien chemin (`mlflow.pyfunc`) et le nouveau (`booster_.predict`) sur 30 échantillons aux caractéristiques variées / écart maximal observé : 0.0 (tolérance testée : 1e-9). Puisque les probabilités sont identiques, toutes les métriques business qui en dérivent (AUC, recall, coût métier, seuil optimal) le sont aussi mécaniquement donc inutile de les recalculer.
 
 * Optimisations envisagées mais non retenues : réduire la complexité du modèle aurait dégradé le coût métier déjà optimisé (cf. "Démarche de sélection du modèle") pour un gain marginal, vu que le calcul natif est déjà sous 1,5ms : ça a été estimé non justifié.
 

@@ -19,3 +19,6 @@ logs.db
 # bytecode Python compile
 __pycache__/
 *.pyc
+
+# rapport de drift genere (cf. src/drift_analysis.py)
+drift_report.html

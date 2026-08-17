@@ -4,6 +4,8 @@ import sqlite3
 from datetime import UTC, datetime
 from typing import Any
 
+import pandas as pd
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS prediction_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -59,3 +61,19 @@ def log_prediction_call(
                 error_detail,
             ),
         )
+
+
+def load_calls_df(db_path: str | None = None, limit: int = 500) -> pd.DataFrame:
+    """Charge les derniers appels enregistres sous forme de DataFrame
+    (timestamp, statut, latence...), pour les besoins d'affichage (dashboard)."""
+    path = _db_path(db_path)
+    with sqlite3.connect(path) as conn:
+        conn.execute(_SCHEMA)
+        df = pd.read_sql_query(
+            "SELECT * FROM prediction_logs ORDER BY id DESC LIMIT ?",
+            conn,
+            params=(limit,),
+        )
+    if not df.empty:
+        df["timestamp"] = pd.to_datetime(df["timestamp"])
+    return df

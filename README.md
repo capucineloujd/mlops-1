@@ -85,6 +85,18 @@ Pour reproduire la mesure "avant" : `benchmark_predict.py` mesure `/predict` tel
 
 **Optimisations envisagées mais non retenues** : réduire la complexité du modèle aurait dégradé le coût métier déjà optimisé (cf. "Démarche de sélection du modèle") pour un gain marginal, vu que le calcul natif est déjà sous 1,5ms : ça a été estimé non justifié.
 
+## Justification de la configuration finale
+
+* Modèle et inférence (software) : LightGBM natif, chargé directement via `mlflow.lightgbm` plutôt que par le wrapper générique `mlflow.pyfunc` (cf. section précédente, gain mesuré de env 3x). Une compilation vers ONNX ou treelite a été envisagée mais écartée : le calcul natif est déjà sous 1,5ms, l'essentiel du gain potentiel (contourner l'overhead pyfunc) est déjà obtenu, et ajouter une étape de compilation/conversion du modèle introduirait de la complexité de déploiement (nouvelle dépendance, pipeline de conversion, risque de divergence numérique) pour un gain marginal à ce niveau de latence déjà faible.
+
+* Hardware : CPU uniquement, pas de GPU : LightGBM est un ensemble d'arbres de décision, pas un réseau de neurones : l'inférence sur CPU est déjà optimale pour ce type de modèle. Avec un modèle à 398 arbres inférant en env 1ms sur un CPU standard, un GPU n'apporterait aucun bénéfice pour ce cas d'usage et ajouterait un coût d'infrastructure et de complexité de déploiement injustifiés.
+
+* API : FastAPI + Uvicorn : Choisi pour la documentation Swagger générée automatiquement, la validation de schéma native (Pydantic), et le support asynchrone — largement suffisant pour ce volume de requêtes, sans le poids d'un framework plus lourd.
+
+* Stockage des logs et du tracking MLflow : SQLite : Zéro administration, suffisant pour le volume d'un PoC local (cf. section "Points de vigilance"). Une base de production à plus grande échelle nécessiterait sans doute PostgreSQL ou équivalent, mais ce serait disproportionné ici.
+
+* Dashboard : Streamlit plutôt que Dash : Développement plus rapide pour un dashboard de monitoring interne aux besoins simples.
+
 ## Dashboard de monitoring
 
     uv run streamlit run src/dashboard.py

@@ -1,4 +1,5 @@
 import os
+import time
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Any
@@ -9,6 +10,8 @@ from fastapi import Depends, FastAPI, HTTPException, Security
 from fastapi.security import APIKeyHeader
 from mlflow.exceptions import MlflowException
 from pydantic import BaseModel
+
+from storage import init_db, log_prediction_call
 
 MODEL_URI = os.environ.get("MODEL_URI", "models:/lightgbm-credit-scoring-serving@gagnant")
 DECISION_THRESHOLD = float(os.environ.get("DECISION_THRESHOLD", "0.499"))
@@ -43,6 +46,7 @@ async def lifespan(_: FastAPI):
     # indisponible au demarrage, l'API demarre quand meme (utile pour que
     # /health reste joignable) et le chargement sera retente a la premiere
     # requete /predict via get_model().
+    init_db()
     try:
         _load_model()
     except MlflowException:
@@ -136,22 +140,40 @@ def health() -> dict[str, str]:
 def predict(
     request: PredictRequest, model: mlflow.pyfunc.PyFuncModel = Depends(get_model)
 ) -> PredictResponse:
-    _validate_business_rules(request.records)
-
-    df = pd.DataFrame(request.records)
+    start = time.perf_counter()
 
     try:
-        probabilities = list(model.predict(df))
-    except MlflowException as exc:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Donnees d'entree invalides pour le modele : {exc.message}",
-        ) from exc
+        _validate_business_rules(request.records)
 
-    decisions = ["REFUSE" if p > DECISION_THRESHOLD else "ACCORDE" for p in probabilities]
+        df = pd.DataFrame(request.records)
 
-    return PredictResponse(
-        probabilities=[float(p) for p in probabilities],
-        decisions=decisions,
-        threshold=DECISION_THRESHOLD,
+        try:
+            probabilities = list(model.predict(df))
+        except MlflowException as exc:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Donnees d'entree invalides pour le modele : {exc.message}",
+            ) from exc
+
+        decisions = ["REFUSE" if p > DECISION_THRESHOLD else "ACCORDE" for p in probabilities]
+        response = PredictResponse(
+            probabilities=[float(p) for p in probabilities],
+            decisions=decisions,
+            threshold=DECISION_THRESHOLD,
+        )
+    except HTTPException as exc:
+        log_prediction_call(
+            request.records,
+            status="error",
+            latency_ms=round((time.perf_counter() - start) * 1000, 2),
+            error_detail=str(exc.detail),
+        )
+        raise
+
+    log_prediction_call(
+        request.records,
+        status="success",
+        output=response.model_dump(),
+        latency_ms=round((time.perf_counter() - start) * 1000, 2),
     )
+    return response

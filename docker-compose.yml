@@ -17,9 +17,9 @@ services:
       - "8000:8000"
     environment:
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
-      MODEL_URI: models:/lightgbm-credit-scoring-serving@gagnant
+      MODEL_URI: models:/lightgbm-credit-scoring@gagnant
       DECISION_THRESHOLD: "0.499"
-      # lue depuis un fichier .env local (non commit, cf. .env.example) ;
+      # lue depuis un fichier .env local
       # jamais de valeur en dur ici
       API_KEY: ${API_KEY:?API_KEY manquante : copie .env.example vers .env et renseigne-la}
     volumes:

@@ -6,16 +6,23 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Any
 
-import mlflow.pyfunc
+import mlflow.lightgbm
 import pandas as pd
 from fastapi import Depends, FastAPI, HTTPException, Security
 from fastapi.security import APIKeyHeader
+from lightgbm import LGBMClassifier
+from lightgbm.basic import LightGBMError
 from mlflow.exceptions import MlflowException
 from pydantic import BaseModel
 
 from storage import init_db, log_prediction_call
 
-MODEL_URI = os.environ.get("MODEL_URI", "models:/lightgbm-credit-scoring-serving@gagnant")
+# Modele LightGBM natif charge directement (mlflow.lightgbm), pas via le
+# wrapper mlflow.pyfunc : profiling (src/profile_inference.py) a montre que
+# le wrapper pyfunc ajoutait ~77% de temps de predict en pur overhead
+# (enforcement de schema, indirection Python) par rapport au calcul reel du
+# modele. Voir la section "Optimisation des performances" du README.
+MODEL_URI = os.environ.get("MODEL_URI", "models:/lightgbm-credit-scoring@gagnant")
 DECISION_THRESHOLD = float(os.environ.get("DECISION_THRESHOLD", "0.499"))
 
 logger = logging.getLogger("scoring_api")
@@ -49,8 +56,8 @@ mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.
 
 
 @lru_cache
-def _load_model() -> mlflow.pyfunc.PyFuncModel:
-    return mlflow.pyfunc.load_model(MODEL_URI)
+def _load_model() -> LGBMClassifier:
+    return mlflow.lightgbm.load_model(MODEL_URI)
 
 
 @asynccontextmanager
@@ -77,8 +84,8 @@ class ErrorResponse(BaseModel):
     detail: str
 
 
-def get_model() -> mlflow.pyfunc.PyFuncModel:
-    """Charge le modele pyfunc depuis le Model Registry MLflow (une seule fois, mis en cache)."""
+def get_model() -> LGBMClassifier:
+    """Charge le modele LightGBM natif depuis le Model Registry MLflow (une seule fois, mis en cache)."""
     try:
         return _load_model()
     except MlflowException as exc:
@@ -152,7 +159,7 @@ def health() -> dict[str, str]:
     },
 )
 def predict(
-    request: PredictRequest, model: mlflow.pyfunc.PyFuncModel = Depends(get_model)
+    request: PredictRequest, model: LGBMClassifier = Depends(get_model)
 ) -> PredictResponse:
     start = time.perf_counter()
 
@@ -162,11 +169,11 @@ def predict(
         df = pd.DataFrame(request.records)
 
         try:
-            probabilities = list(model.predict(df))
-        except MlflowException as exc:
+            probabilities = list(model.predict_proba(df)[:, 1])
+        except (LightGBMError, ValueError) as exc:
             raise HTTPException(
                 status_code=422,
-                detail=f"Donnees d'entree invalides pour le modele : {exc.message}",
+                detail=f"Donnees d'entree invalides pour le modele : {exc}",
             ) from exc
 
         decisions = ["REFUSE" if p > DECISION_THRESHOLD else "ACCORDE" for p in probabilities]

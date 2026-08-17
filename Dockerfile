@@ -17,11 +17,8 @@ RUN uv sync --frozen --no-dev
 COPY src/ ./src/
 
 ENV MLFLOW_TRACKING_URI=sqlite:///mlflow.db
-ENV MODEL_URI=models:/lightgbm-credit-scoring-serving@gagnant
+ENV MODEL_URI=models:/lightgbm-credit-scoring@gagnant
 ENV DECISION_THRESHOLD=0.499
-# API_KEY volontairement absent ici : jamais de secret en dur dans l'image,
-# doit etre injecte au runtime (docker run -e API_KEY=..., secret GitHub
-# Actions, etc.) sinon l'API refuse les requetes sur /predict.
 
 EXPOSE 8000
 

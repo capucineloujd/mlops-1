@@ -10,23 +10,19 @@ AUTH_HEADERS = {"X-API-Key": API_KEY}
 
 
 class FakeModel:
-    """Modele factice : renvoie une proba fixe par ligne, pour tester l'API
-    (routing, validation, format de reponse) independamment du vrai modele MLflow."""
+    """Modele factice"""
 
     def __init__(self, probabilities):
         self.probabilities = probabilities
 
-    def predict(self, df):
+    def predict_proba(self, df):
         assert len(df) == len(self.probabilities)
-        return np.array(self.probabilities)
+        proba_class_1 = np.array(self.probabilities)
+        return np.column_stack([1 - proba_class_1, proba_class_1])
 
 
 @pytest.fixture
 def client():
-    # header d'authentification envoye par defaut sur toutes les requetes de
-    # ce client : les tests existants n'ont pas besoin de le repeter partout.
-    # Les tests d'authentification eux-memes utilisent un TestClient a part
-    # (cf. TestAuthentification) pour controler precisement les headers envoyes.
     with TestClient(app, headers=AUTH_HEADERS) as c:
         yield c
     app.dependency_overrides.clear()
@@ -38,7 +34,7 @@ def override_model(probabilities):
 
 class TestStockageDesAppels:
     """Verifie que chaque appel /predict (succes et echec) est bien
-    persiste dans logs.db, cf. src/storage.py."""
+    persisté dans logs.db, cf. src/storage.py."""
 
     @pytest.fixture
     def logged_client(self, tmp_path, monkeypatch):
@@ -87,9 +83,7 @@ class TestHealth:
         assert response.json() == {"status": "ok"}
 
     def test_health_ne_necessite_pas_de_cle_api(self):
-        # /health doit rester accessible sans authentification (utilise par
-        # les orchestrateurs / le script de deploiement pour verifier que le
-        # service est en ligne, avant meme de connaitre une cle API)
+        # /health doit rester accessible sans authentification
         with TestClient(app) as unauth_client:
             response = unauth_client.get("/health")
         assert response.status_code == 200
@@ -164,10 +158,6 @@ class TestPredict:
         assert response.json()["probabilities"] == []
 
     def test_records_manquant_renvoie_422(self, client):
-        # override du modele : ce test verifie la validation du body,
-        # pas le chargement du modele (FastAPI resout les Depends meme
-        # quand le body est invalide, donc get_model() serait quand meme
-        # appele si on ne le mockait pas)
         override_model([])
 
         response = client.post("/predict", json={})
@@ -176,9 +166,7 @@ class TestPredict:
 
 
 class TestValidationMetier:
-    """Cas critiques demandes par la consigne : champs obligatoires manquants,
-    valeurs hors plage, types incorrects. Utilise le FakeModel pour tester la
-    validation elle-meme, independamment du vrai modele MLflow."""
+    """Cas critiques demandés par la consigne"""
 
     def test_revenu_nul_rejete(self, client):
         override_model([0.5])
@@ -207,9 +195,7 @@ class TestValidationMetier:
         assert response.status_code == 422
 
     def test_age_impossible_rejete(self, client):
-        # DAYS_BIRTH doit etre negatif (convention Home Credit : nombre de
-        # jours avant la demande de credit). Une valeur positive ou nulle
-        # correspondrait a un client pas encore ne.
+        # DAYS_BIRTH doit etre negatif (convention Home Credit)
         override_model([0.5])
 
         response = client.post("/predict", json={"records": [{"DAYS_BIRTH": 5}]})
@@ -235,10 +221,7 @@ class TestValidationMetier:
         assert "AMT_INCOME_TOTAL" in response.json()["detail"]
 
     def test_champ_critique_absent_ne_bloque_pas(self, client):
-        # les regles metier ne s'appliquent que si le champ est present :
-        # un record qui ne contient pas ces champs n'est pas rejete a ce
-        # niveau (le schema complet reste valide par MLflow au moment du
-        # predict, hors scope de ce test avec le FakeModel)
+        # les règles metier ne s'appliquent que si le champ est présent
         override_model([0.5])
 
         response = client.post("/predict", json={"records": [{"EXT_SOURCE_2": 0.5}]})
@@ -264,7 +247,7 @@ class TestValidationMetier:
 
 
 class TestPredictAvecLeVraiModele:
-    """Test d'integration bout-en-bout avec le vrai modele charge depuis
+    """Test d'integration bout-en-bout avec le vrai modele chargé depuis
     Model Registry MLflow."""
 
     @pytest.fixture(autouse=True)
@@ -276,16 +259,8 @@ class TestPredictAvecLeVraiModele:
 
     def test_predict_avec_un_seul_client(self, client):
         model = get_model()
-        schema = model.metadata.get_input_schema()
-        if schema is None:
-            pytest.skip("Le modele enregistre n'expose pas de signature d'entree")
-
-        record = {
-            col.name: False if str(col.type) == "DataType.boolean" else 0.0
-            for col in schema.inputs
-        }
-        # 0.0 partout n'est pas metier-plausible pour ces champs (cf.
-        # TestValidationMetier) : on les corrige pour un client factice mais valide
+        record = {name: 0.0 for name in model.feature_name_}
+        # 0.0 partout n'est pas metier-plausible pour ces champs: on les corrige pour un client factice mais valide
         record.update(
             {
                 "AMT_INCOME_TOTAL": 50000.0,
@@ -303,9 +278,6 @@ class TestPredictAvecLeVraiModele:
         assert body["decisions"][0] in {"ACCORDE", "REFUSE"}
 
     def test_champs_obligatoires_manquants_rejete_par_le_vrai_schema(self, client):
-        # contre le vrai schema de production (710 colonnes attendues) : un
-        # record quasiment vide doit etre rejete par l'enforcement de schema
-        # MLflow, pas silencieusement accepte avec des colonnes manquantes
         response = client.post("/predict", json={"records": [{"EXT_SOURCE_2": 0.5}]})
 
         assert response.status_code == 422

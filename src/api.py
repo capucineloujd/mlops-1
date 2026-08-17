@@ -40,15 +40,10 @@ def get_model() -> mlflow.pyfunc.PyFuncModel:
         ) from exc
 
 
-# Regles de plausibilite metier pour les champs les plus critiques, verifiees
-# uniquement si le champ est present dans le record (le schema complet, lui,
-# est valide par MLflow au moment de l'inference). Objectif : rejeter tot les
-# entrees absurdes (age negatif, revenu nul, texte a la place d'un chiffre)
-# plutot que de laisser le modele produire une prediction sur du n'importe quoi.
 _BUSINESS_RULES: dict[str, tuple[str, Any]] = {
     "AMT_INCOME_TOTAL": (">", 0),  # revenu strictement positif
     "AMT_CREDIT": (">", 0),  # montant du credit strictement positif
-    "DAYS_BIRTH": ("<", 0),  # convention Home Credit : jours negatifs (age > 0)
+    "DAYS_BIRTH": ("<", 0),  # convention Home Credit : jours negatifs
     "CNT_CHILDREN": (">=", 0),  # nombre d'enfants positif ou nul
 }
 

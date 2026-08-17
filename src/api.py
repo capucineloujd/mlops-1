@@ -1,4 +1,5 @@
 import os
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Any
 
@@ -12,10 +13,7 @@ from pydantic import BaseModel
 MODEL_URI = os.environ.get("MODEL_URI", "models:/lightgbm-credit-scoring-serving@gagnant")
 DECISION_THRESHOLD = float(os.environ.get("DECISION_THRESHOLD", "0.499"))
 
-# Cle API attendue, jamais en dur dans le code : lue depuis l'environnement
-# (variable d'env locale, secret GitHub Actions en CI/CD, cf. deploy/deploy.sh
-# et .github/workflows/tests.yml). Si absente, l'API refuse toute requete
-# protegee plutot que de tourner sans authentification par defaut.
+
 API_KEY = os.environ.get("API_KEY")
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -31,20 +29,37 @@ def require_api_key(provided_key: str | None = Security(_api_key_header)) -> Non
 
 mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"))
 
+
+@lru_cache
+def _load_model() -> mlflow.pyfunc.PyFuncModel:
+    return mlflow.pyfunc.load_model(MODEL_URI)
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    # charge le modele une seule fois, au demarrage de l'API (pas a la
+    # premiere requete) : les requetes /predict n'ont plus jamais a payer
+    # le cout du chargement. Best-effort : si le Model Registry est
+    # indisponible au demarrage, l'API demarre quand meme (utile pour que
+    # /health reste joignable) et le chargement sera retente a la premiere
+    # requete /predict via get_model().
+    try:
+        _load_model()
+    except MlflowException:
+        pass
+    yield
+
+
 app = FastAPI(
     title="Home Credit - Scoring API",
     description="Expose le modele de scoring credit (LightGBM, optimise Optuna) via une API REST.",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 
 class ErrorResponse(BaseModel):
     detail: str
-
-
-@lru_cache
-def _load_model() -> mlflow.pyfunc.PyFuncModel:
-    return mlflow.pyfunc.load_model(MODEL_URI)
 
 
 def get_model() -> mlflow.pyfunc.PyFuncModel:

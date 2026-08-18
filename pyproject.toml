@@ -24,6 +24,10 @@ dependencies = [
     "uvicorn[standard]>=0.32.0",
     "evidently>=0.7.21",
     "streamlit>=1.61.1",
+    "psutil>=7.2.2",
+    "onnxmltools>=1.16.0",
+    "onnxruntime>=1.29.0",
+    "skl2onnx>=1.20.0",
 ]
 
 [dependency-groups]

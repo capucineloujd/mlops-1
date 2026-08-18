@@ -58,15 +58,17 @@ L'interface est accessible à http://localhost:5000.
 
 ## Optimisation des performances d'inférence
 
-Un profiling (`uv run python src/profile_inference.py`) a décomposé `/predict` en étapes chronométrées séparément, sur le modèle réel :
+**Méthodologie : partir des données de monitoring réelles, pas d'une hypothèse en l'air.** `src/profile_inference.py` commence par interroger `monitoring.py` sur les vrais appels enregistrés dans `logs.db`, et récupère un vrai enregistrement `input_json` (pas une valeur inventée) pour profiler sur une requête authentique. Sur du trafic réel généré via l'API : latence moyenne 0,71ms / p95 1,09ms observées - c'est cette baseline réelle, et le fait qu'elle laissait deviner un potentiel d'optimisation vu l'écart avec les temps de predict mesurés par ailleurs, qui a motivé le profiling détaillé ci-dessous, plutôt qu'une intuition non vérifiée.
+
+Un profiling (`uv run python src/profile_inference.py`) a décomposé `/predict` en étapes chronométrées séparément, sur le modèle réel et un enregistrement réel :
 
 | Étape | Moyenne | p95 |
 |---|---|---|
-| Construction du DataFrame | 2,42ms | 2,60ms |
-| Predict via wrapper `mlflow.pyfunc` (ancien chemin) | 5,00ms | 5,45ms |
-| Predict LightGBM natif (sans `mlflow.pyfunc`) | 1,13ms | 1,30ms |
+| Construction du DataFrame | 2,30ms | 2,46ms |
+| Predict via wrapper `mlflow.pyfunc` (ancien chemin) | 5,27ms | 5,86ms |
+| Predict LightGBM natif (sans `mlflow.pyfunc`) | 1,27ms | 1,84ms |
 
-Constat fait : le calcul du modèle lui-même ne prend que 1,13ms, mais le wrapper `mlflow.pyfunc` représentait 77,5% du temps de predict.
+Constat fait : le calcul du modèle lui-même ne prend que 1,27ms, mais le wrapper `mlflow.pyfunc` représentait 75,9% du temps de predict - cohérent avec la première mesure sur donnée synthétique (77,5%), ce qui confirme que le résultat n'était pas un artefact du jeu de test fabriqué.
 
 Un profiling outillé plus fin (`uv run python src/profile_cprofile.py`, via `cProfile`) confirme et localise précisément la source de cet overhead : sur 200 appels, le chemin `mlflow.pyfunc` déclenche 20,3 millions d'appels de fonction Python, contre 1,3 million pour le modèle natif (16x moins). Le vrai goulot est la fonction `_enforce_named_col_schema` de mlflow, qui appelle `pandas.Index.union()` une fois par colonne du schéma - soit ~710 appels à cette opération par requête sur ce modèle (710 features), un pattern O(n_colonnes) coûteux pour l'enforcement de schéma sur un modèle aussi large.
 

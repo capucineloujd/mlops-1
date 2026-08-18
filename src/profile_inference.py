@@ -1,10 +1,3 @@
-"""Profiling de /predict : decoupe le chemin d'inference en etapes
-chronometrees separement, pour identifier le vrai goulot d'etranglement
-avant de choisir une optimisation.
-
-Usage : uv run python src/profile_inference.py
-"""
-
 import json
 import os
 import time
@@ -23,7 +16,6 @@ N_WARMUP = 20
 CPU_MEASURE_DURATION_S = 2.0  # duree min. de charge soutenue pour une lecture CPU stable
 
 mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"))
-
 
 def print_monitoring_baseline() -> None:
     """Point de depart methodologique : que dit le monitoring reel (base de
@@ -163,3 +155,4 @@ if __name__ == "__main__":
     print(f"Predict via wrapper pyfunc : {cpu_pyfunc}% CPU (1 coeur = 100%)")
     print(f"Predict LightGBM natif     : {cpu_native}% CPU (1 coeur = 100%)")
     print(f"CPU logiques disponibles   : {psutil.cpu_count()}")
+    

@@ -1,7 +1,7 @@
-import sqlite3
 from typing import ClassVar
 
 import numpy as np
+import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
@@ -39,24 +39,23 @@ def override_model(probabilities):
 
 class TestStockageDesAppels:
     """Verifie que chaque appel /predict (succes et echec) est bien
-    persisté dans logs.db, cf. src/storage.py."""
+    persisté en base (PostgreSQL), cf. src/storage.py."""
 
     @pytest.fixture
-    def logged_client(self, tmp_path, monkeypatch):
-        db_path = str(tmp_path / "logs.db")
-        monkeypatch.setenv("LOGS_DB_PATH", db_path)
+    def logged_client(self, test_db, monkeypatch):
+        monkeypatch.setenv("DATABASE_URL", test_db)
 
         with TestClient(app, headers=AUTH_HEADERS) as c:
-            yield c, db_path
+            yield c, test_db
         app.dependency_overrides.clear()
 
     def test_appel_reussi_est_enregistre(self, logged_client):
-        client, db_path = logged_client
+        client, database_url = logged_client
         override_model([0.2])
 
         client.post("/predict", json={"records": [{"EXT_SOURCE_2": 0.5}]})
 
-        with sqlite3.connect(db_path) as conn:
+        with psycopg.connect(database_url) as conn:
             row = conn.execute(
                 "SELECT status, latency_ms, output_json FROM prediction_logs"
             ).fetchone()
@@ -66,12 +65,12 @@ class TestStockageDesAppels:
         assert row[2] is not None
 
     def test_appel_en_erreur_est_enregistre(self, logged_client):
-        client, db_path = logged_client
+        client, database_url = logged_client
         override_model([0.2])
 
         client.post("/predict", json={"records": [{"AMT_INCOME_TOTAL": 0}]})
 
-        with sqlite3.connect(db_path) as conn:
+        with psycopg.connect(database_url) as conn:
             row = conn.execute(
                 "SELECT status, output_json, error_detail FROM prediction_logs"
             ).fetchone()

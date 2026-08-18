@@ -56,9 +56,32 @@ Une version pyfunc du modèle final est également enregistrée sous `lightgbm-c
 
 L'interface est accessible à http://localhost:5000.
 
+## Stockage des données de production
+
+Chaque appel à `/predict` (succès & échec) est enregistré par `src/storage.py` dans une base **PostgreSQL** (`DATABASE_URL`, cf. `.env`), table `prediction_logs` :
+
+| Colonne | Contenu |
+|---|---|
+| `id`, `timestamp` | identifiant, horodatage UTC |
+| `input_json` | les records reçus, en JSON brut |
+| `n_records` | nombre de clients dans l'appel |
+| `output_json` | probabilités + décisions renvoyées (`null` si l'appel a échoué) |
+| `latency_ms` | temps d'exécution mesuré côté serveur |
+| `status` | `success` / `error` |
+| `error_detail` | message d'erreur (`null` si succès) |
+
+En local/CI, Postgres tourne dans un conteneur dédié (`docker-compose.yml`, service `postgres`, ou service Postgres du job `pytest` en CI). Le stockage est **best-effort** côté API : une base momentanément injoignable ne fait échouer ni le démarrage (`/health` reste joignable), ni une prédiction déjà calculée (`/predict` répond quand même, juste sans logging - vérifié en désactivant Postgres pendant les tests).
+
+--> Ce que ces données permettent : c'est la source unique de vérité pour `monitoring.py` (taux d'erreur, latence), `drift_analysis.py` (dérive des données), `dashboard.py` (visualisation), et le profiling de performance ci-dessous - stocker à la fois l'input, l'output et la latence était le prérequis explicite du sujet pour permettre cette analyse a posteriori.
+
+**Limites connues, non traitées** :
+- **Pas de politique de rétention** : les logs s'accumulent indéfiniment, aucune purge automatique.
+- **Pas de chiffrement au repos** configuré par défaut sur le conteneur Postgres local.
+- **RGPD** : ce projet tourne sur des données anonymisées (dataset Kaggle) à des fins pédagogiques. Si ce système traitait un jour de vraies données de clients (revenu, âge, situation familiale - potentiellement identifiants en croisement), il faudrait ajouter chiffrement au repos, rétention limitée dans le temps, anonymisation/pseudonymisation des champs sensibles, et un mécanisme de droit à l'effacement avant toute mise en production réelle.
+
 ## Optimisation des performances d'inférence
 
-**Méthodologie : partir des données de monitoring réelles, pas d'une hypothèse en l'air.** `src/profile_inference.py` commence par interroger `monitoring.py` sur les vrais appels enregistrés dans `logs.db`, et récupère un vrai enregistrement `input_json` (pas une valeur inventée) pour profiler sur une requête authentique. Sur du trafic réel généré via l'API : latence moyenne 0,71ms / p95 1,09ms observées - c'est cette baseline réelle, et le fait qu'elle laissait deviner un potentiel d'optimisation vu l'écart avec les temps de predict mesurés par ailleurs, qui a motivé le profiling détaillé ci-dessous, plutôt qu'une intuition non vérifiée.
+**Méthodologie : partir des données de monitoring réelles, pas d'une hypothèse en l'air.** `src/profile_inference.py` commence par interroger `monitoring.py` sur les vrais appels enregistrés en base (PostgreSQL, cf. "Stockage des données de production"), et récupère un vrai enregistrement `input_json` (pas une valeur inventée) pour profiler sur une requête authentique. Sur du trafic réel généré via l'API : latence moyenne 0,71ms / p95 1,09ms observées - c'est cette baseline réelle, et le fait qu'elle laissait deviner un potentiel d'optimisation vu l'écart avec les temps de predict mesurés par ailleurs, qui a motivé le profiling détaillé ci-dessous, plutôt qu'une intuition non vérifiée.
 
 Un profiling (`uv run python src/profile_inference.py`) a décomposé `/predict` en étapes chronométrées séparément, sur le modèle réel et un enregistrement réel :
 
@@ -120,7 +143,8 @@ Au total depuis le point de départ : 18,68ms → 3,67ms, soit environ 5x plus r
 
 * API : FastAPI + Uvicorn : Choisi pour la documentation Swagger générée automatiquement, la validation de schéma native (Pydantic), et le support asynchrone - largement suffisant pour ce volume de requêtes, sans le poids d'un framework plus lourd.
 
-* Stockage des logs et du tracking MLflow : SQLite : Zéro administration, suffisant pour le volume d'un PoC local (cf. section "Points de vigilance"). Une base de production à plus grande échelle nécessiterait sans doute PostgreSQL ou équivalent, mais ce serait disproportionné ici.
+* Tracking MLflow : SQLite : zéro administration, suffisant pour le volume d'un PoC local.
+* Logs de production (`prediction_logs`) : PostgreSQL, dans un conteneur dédié (`docker-compose.yml` en local, service dédié en CI) - stockage best-effort côté API, cf. "Stockage des données de production".
 
 * Dashboard : Streamlit plutôt que Dash : Développement plus rapide pour un dashboard de monitoring interne aux besoins simples.
 

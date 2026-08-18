@@ -6,14 +6,7 @@ from drift_analysis import (
     run_drift_report,
     summarize,
 )
-from storage import init_db, log_prediction_call
-
-
-@pytest.fixture
-def db_path(tmp_path):
-    path = str(tmp_path / "logs.db")
-    init_db(path)
-    return path
+from storage import log_prediction_call
 
 
 @pytest.fixture
@@ -22,32 +15,34 @@ def reference_df():
 
 
 class TestLoadCurrentFromLogs:
-    def test_ne_recupere_que_les_appels_reussis(self, db_path):
-        log_prediction_call([{"AMT_INCOME_TOTAL": 1}], status="success", output={}, latency_ms=1.0, db_path=db_path)
+    def test_ne_recupere_que_les_appels_reussis(self, test_db):
         log_prediction_call(
-            [{"AMT_INCOME_TOTAL": 2}], status="error", latency_ms=1.0, error_detail="x", db_path=db_path
+            [{"AMT_INCOME_TOTAL": 1}], status="success", output={}, latency_ms=1.0, database_url=test_db
+        )
+        log_prediction_call(
+            [{"AMT_INCOME_TOTAL": 2}], status="error", latency_ms=1.0, error_detail="x", database_url=test_db
         )
 
-        df = load_current_from_logs(db_path=db_path, window=100)
+        df = load_current_from_logs(database_url=test_db, window=100)
 
         assert len(df) == 1
         assert df.iloc[0]["AMT_INCOME_TOTAL"] == 1
 
-    def test_filtre_sur_les_colonnes_demandees(self, db_path):
+    def test_filtre_sur_les_colonnes_demandees(self, test_db):
         log_prediction_call(
             [{"AMT_INCOME_TOTAL": 1, "AUTRE_CHAMP": 99}],
             status="success",
             output={},
             latency_ms=1.0,
-            db_path=db_path,
+            database_url=test_db,
         )
 
-        df = load_current_from_logs(db_path=db_path, window=100, columns=["AMT_INCOME_TOTAL"])
+        df = load_current_from_logs(database_url=test_db, window=100, columns=["AMT_INCOME_TOTAL"])
 
         assert list(df.columns) == ["AMT_INCOME_TOTAL"]
 
-    def test_aucun_appel_renvoie_un_dataframe_vide(self, db_path):
-        df = load_current_from_logs(db_path=db_path, window=100)
+    def test_aucun_appel_renvoie_un_dataframe_vide(self, test_db):
+        df = load_current_from_logs(database_url=test_db, window=100)
 
         assert df.empty
 

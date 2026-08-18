@@ -7,7 +7,6 @@ Usage : uv run python src/profile_inference.py
 
 import json
 import os
-import sqlite3
 import time
 
 import mlflow.lightgbm
@@ -16,6 +15,7 @@ import pandas as pd
 import psutil
 
 from monitoring import analyze
+from storage import load_successful_inputs
 
 MODEL_URI = os.environ.get("MODEL_URI", "models:/lightgbm-credit-scoring-serving@gagnant")
 N_RUNS = 200
@@ -26,13 +26,14 @@ mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.
 
 
 def print_monitoring_baseline() -> None:
-    """Point de depart methodologique : que dit le monitoring reel (logs.db)
-    avant de se lancer dans le profiling de code ? Sans ca, on profile a
-    l'aveugle sur une hypothese non fondee sur des donnees de production."""
+    """Point de depart methodologique : que dit le monitoring reel (base de
+    production) avant de se lancer dans le profiling de code ? Sans ca, on
+    profile a l'aveugle sur une hypothese non fondee sur des donnees de
+    production."""
     report = analyze(window=200)
-    print("=== Baseline monitoring (logs.db, donnees reelles) ===")
+    print("=== Baseline monitoring (donnees reelles) ===")
     if report.n_calls_analyzed == 0:
-        print("Aucun appel enregistre dans logs.db pour l'instant.")
+        print("Aucun appel enregistre pour l'instant.")
         print("(genere du trafic via l'API avant de lancer ce script pour une baseline reelle)")
     else:
         print(f"Appels analyses : {report.n_calls_analyzed}")
@@ -43,19 +44,14 @@ def print_monitoring_baseline() -> None:
     print()
 
 
-def load_real_record(db_path: str | None = None) -> dict | None:
-    """Recupere l'input JSON d'un vrai appel /predict reussi depuis logs.db,
-    pour profiler sur une requete authentique plutot qu'un exemple invente."""
-    path = db_path or os.environ.get("LOGS_DB_PATH", "logs.db")
-    if not os.path.exists(path):
+def load_real_record() -> dict | None:
+    """Recupere l'input JSON d'un vrai appel /predict reussi depuis la base
+    de production, pour profiler sur une requete authentique plutot qu'un
+    exemple invente."""
+    inputs = load_successful_inputs(limit=1)
+    if not inputs:
         return None
-    with sqlite3.connect(path) as conn:
-        row = conn.execute(
-            "SELECT input_json FROM prediction_logs WHERE status = 'success' ORDER BY id DESC LIMIT 1"
-        ).fetchone()
-    if row is None:
-        return None
-    records = json.loads(row[0])
+    records = json.loads(inputs[0])
     return records[0] if records else None
 
 
@@ -118,7 +114,7 @@ if __name__ == "__main__":
 
     real_record = load_real_record()
     if real_record is not None:
-        print("Profiling sur un enregistrement REEL tire de logs.db (dernier appel reussi).\n")
+        print("Profiling sur un enregistrement REEL tire de la base de production (dernier appel reussi).\n")
         # le record reel est enregistre avec les noms sanitizes (feature_name_,
         # cf. api.py) ; le schema mlflow.pyfunc garde les noms originaux (espaces).
         # Meme ordre de colonnes des deux cotes (verifie), donc mapping positionnel.
@@ -130,7 +126,7 @@ if __name__ == "__main__":
             value = real_record[native_name]
             record_pyfunc[schema_name] = bool(value) if schema_name in boolean_names else value
     else:
-        print("Aucun appel reussi trouve dans logs.db : profiling sur un enregistrement synthetique.\n")
+        print("Aucun appel reussi trouve en base : profiling sur un enregistrement synthetique.\n")
         record_pyfunc = build_sample_record(schema)
         record_native = dict(zip(raw_lgbm_model.feature_name_, record_pyfunc.values()))
 

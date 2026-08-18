@@ -8,6 +8,7 @@ from typing import Any
 
 import mlflow.lightgbm
 import numpy as np
+import psycopg
 from fastapi import Depends, FastAPI, HTTPException, Security
 from fastapi.security import APIKeyHeader
 from lightgbm import LGBMClassifier
@@ -65,8 +66,15 @@ def _load_model() -> LGBMClassifier:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # best-effort : si la base Postgres ou le Model Registry sont
+    # indisponibles au demarrage, l'API demarre quand meme (utile pour que
+    # /health reste joignable) ; les deux seront retentes a la premiere
+    # requete /predict via log_prediction_call()/get_model().
+    try:
+        init_db()
+    except psycopg.OperationalError as exc:
+        _log("storage_unavailable", reason=str(exc))
 
-    init_db()
     try:
         _load_model()
         _log("model_loaded", model_uri=MODEL_URI)
@@ -133,6 +141,15 @@ def _validate_business_rules(records: list[dict[str, Any]]) -> None:
                     status_code=422,
                     detail=f"Enregistrement {i} : '{field}'={value} hors de la plage attendue (doit etre {op} {bound})",
                 )
+
+
+def _safe_log_prediction_call(*args: Any, **kwargs: Any) -> None:
+    # le stockage est best-effort : une base Postgres momentanement injoignable
+    # ne doit pas faire echouer une reponse /predict deja calculee avec succes
+    try:
+        log_prediction_call(*args, **kwargs)
+    except psycopg.OperationalError as exc:
+        _log("storage_unavailable", reason=str(exc))
 
 
 def _build_feature_array(records: list[dict[str, Any]], feature_names: list[str]) -> np.ndarray:
@@ -212,7 +229,7 @@ def predict(
     except HTTPException as exc:
         latency_ms = round((time.perf_counter() - start) * 1000, 2)
         _log("prediction_failed", n_records=len(request.records), latency_ms=latency_ms, reason=str(exc.detail))
-        log_prediction_call(
+        _safe_log_prediction_call(
             request.records,
             status="error",
             latency_ms=latency_ms,
@@ -228,7 +245,7 @@ def predict(
         n_refuse=decisions.count("REFUSE"),
         latency_ms=latency_ms,
     )
-    log_prediction_call(
+    _safe_log_prediction_call(
         request.records,
         status="success",
         output=response.model_dump(),

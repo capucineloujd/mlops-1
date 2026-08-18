@@ -1,12 +1,11 @@
 import json
 import os
-import sqlite3
 
 import pandas as pd
 from evidently import Dataset, DataDefinition, Report
 from evidently.presets import DataDriftPreset
 
-from storage import init_db
+from storage import load_successful_inputs
 
 MIN_CURRENT_SAMPLES = 30
 
@@ -18,21 +17,14 @@ def load_reference(reference_path: str | None = None) -> pd.DataFrame:
 
 
 def load_current_from_logs(
-    db_path: str | None = None, window: int = 200, columns: list[str] | None = None
+    database_url: str | None = None, window: int = 200, columns: list[str] | None = None
 ) -> pd.DataFrame:
     """Reconstruit un DataFrame des inputs recents a partir des appels /predict
     réussis (les rejets métier/schéma n'ont jamais atteint le modèle)."""
-    path = db_path or os.environ.get("LOGS_DB_PATH", "logs.db")
-
-    init_db(path)  # garantit que la table existe, meme sur une base fraiche/vide
-    with sqlite3.connect(path) as conn:
-        rows = conn.execute(
-            "SELECT input_json FROM prediction_logs WHERE status = 'success' ORDER BY id DESC LIMIT ?",
-            (window,),
-        ).fetchall()
+    input_jsons = load_successful_inputs(database_url, window)
 
     records = []
-    for (input_json,) in rows:
+    for input_json in input_jsons:
         records.extend(json.loads(input_json))
 
     df = pd.DataFrame(records)

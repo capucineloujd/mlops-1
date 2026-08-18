@@ -10,6 +10,21 @@ jobs:
   pytest:
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: mlops
+          POSTGRES_PASSWORD: mlops
+          POSTGRES_DB: mlops
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U mlops"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - uses: actions/checkout@v4
 
@@ -25,6 +40,9 @@ jobs:
         run: uv sync --frozen
 
       - name: Run tests with coverage
+        env:
+          DATABASE_URL: postgresql://mlops:mlops@localhost:5433/mlops
+          TEST_DATABASE_URL: postgresql://mlops:mlops@localhost:5433/mlops
         run: uv run pytest tests/ -v --cov --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage report

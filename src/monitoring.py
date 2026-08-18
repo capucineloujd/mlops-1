@@ -1,12 +1,12 @@
 import json
 import os
-import sqlite3
 from dataclasses import dataclass, field
 from statistics import mean
+from typing import Any
 
 from scipy.stats import ks_2samp
 
-from storage import init_db
+from storage import load_rows
 
 ERROR_RATE_THRESHOLD = float(os.environ.get("ERROR_RATE_THRESHOLD", "0.10"))
 LATENCY_P95_THRESHOLD_MS = float(os.environ.get("LATENCY_P95_THRESHOLD_MS", "500"))
@@ -33,15 +33,8 @@ class Report:
     anomalies: list[Anomaly] = field(default_factory=list)
 
 
-def _load_recent_calls(db_path: str, limit: int) -> list[sqlite3.Row]:
-    init_db(db_path)  # garantit que la table existe, meme sur une base fraiche/vide
-    with sqlite3.connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT input_json, status, latency_ms FROM prediction_logs ORDER BY id DESC LIMIT ?",
-            (limit,),
-        ).fetchall()
-    return rows
+def _load_recent_calls(database_url: str | None, limit: int) -> list[dict[str, Any]]:
+    return load_rows(database_url, limit)
 
 
 def _percentile(values: list[float], p: float) -> float:
@@ -52,7 +45,7 @@ def _percentile(values: list[float], p: float) -> float:
     return values[idx]
 
 
-def _check_error_rate(rows: list[sqlite3.Row], report: Report) -> None:
+def _check_error_rate(rows: list[dict[str, Any]], report: Report) -> None:
     if not rows:
         return
     n_errors = sum(1 for r in rows if r["status"] == "error")
@@ -70,7 +63,7 @@ def _check_error_rate(rows: list[sqlite3.Row], report: Report) -> None:
         )
 
 
-def _check_latency(rows: list[sqlite3.Row], report: Report) -> None:
+def _check_latency(rows: list[dict[str, Any]], report: Report) -> None:
     latencies = [r["latency_ms"] for r in rows if r["status"] == "success" and r["latency_ms"] is not None]
     if not latencies:
         return
@@ -89,7 +82,7 @@ def _check_latency(rows: list[sqlite3.Row], report: Report) -> None:
         )
 
 
-def _check_data_drift(rows: list[sqlite3.Row], report: Report, reference_path: str) -> None:
+def _check_data_drift(rows: list[dict[str, Any]], report: Report, reference_path: str) -> None:
     if not os.path.exists(reference_path):
         return
 
@@ -130,12 +123,13 @@ def _check_data_drift(rows: list[sqlite3.Row], report: Report, reference_path: s
             )
 
 
-def analyze(db_path: str | None = None, reference_path: str | None = None, window: int = 200) -> Report:
-    """Analyse les window derniers appels enregistres dans logs.db."""
-    path = db_path or os.environ.get("LOGS_DB_PATH", "logs.db")
+def analyze(
+    database_url: str | None = None, reference_path: str | None = None, window: int = 200
+) -> Report:
+    """Analyse les window derniers appels enregistres en base."""
     ref_path = reference_path or _REFERENCE_PATH
 
-    rows = _load_recent_calls(path, window)
+    rows = _load_recent_calls(database_url, window)
     report = Report(n_calls_analyzed=len(rows))
 
     _check_error_rate(rows, report)

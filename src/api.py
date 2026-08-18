@@ -18,14 +18,7 @@ from pydantic import BaseModel
 
 from storage import init_db, log_prediction_call
 
-# Modele LightGBM natif charge directement (mlflow.lightgbm), pas via le
-# wrapper mlflow.pyfunc : profiling (src/profile_inference.py) a montre que
-# le wrapper pyfunc ajoutait ~77% de temps de predict en pur overhead
-# (enforcement de schema, indirection Python) par rapport au calcul reel du
-# modele. Le predict lui-meme appelle model.booster_.predict() sur un tableau
-# numpy construit a la main (pas pd.DataFrame + LGBMClassifier.predict_proba) :
-# ~15x plus rapide, resultats identiques (verifie avec np.allclose). Voir la
-# section "Optimisation des performances" du README.
+
 MODEL_URI = os.environ.get("MODEL_URI", "models:/lightgbm-credit-scoring@gagnant")
 DECISION_THRESHOLD = float(os.environ.get("DECISION_THRESHOLD", "0.499"))
 
@@ -52,7 +45,7 @@ def require_api_key(provided_key: str | None = Security(_api_key_header)) -> Non
             detail="API_KEY n'est pas configuree cote serveur : l'API ne peut pas etre securisee.",
         )
     if provided_key != API_KEY:
-        # jamais la cle recue dans les logs, seulement le fait qu'elle est invalide
+        # jamais la clef recue dans les logs, seulement le fait qu'elle est invalide
         _log("auth_failed", reason="missing_or_invalid_key")
         raise HTTPException(status_code=401, detail="Cle API manquante ou invalide (header X-API-Key)")
 
@@ -66,10 +59,7 @@ def _load_model() -> LGBMClassifier:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # best-effort : si la base Postgres ou le Model Registry sont
-    # indisponibles au demarrage, l'API demarre quand meme (utile pour que
-    # /health reste joignable) ; les deux seront retentes a la premiere
-    # requete /predict via log_prediction_call()/get_model().
+    # best-effort : si la base Postgres ou le Model Registry sont indisponibles au demarrage, l'API demarre quand même
     try:
         init_db()
     except psycopg.OperationalError as exc:
@@ -96,7 +86,7 @@ class ErrorResponse(BaseModel):
 
 
 def get_model() -> LGBMClassifier:
-    """Charge le modele LightGBM natif depuis le Model Registry MLflow (une seule fois, mis en cache)."""
+    """Charge le modèle LightGBM natif depuis le Model Registry MLflow (une seule fois, mis en cache)."""
     try:
         return _load_model()
     except MlflowException as exc:
@@ -144,8 +134,7 @@ def _validate_business_rules(records: list[dict[str, Any]]) -> None:
 
 
 def _safe_log_prediction_call(*args: Any, **kwargs: Any) -> None:
-    # le stockage est best-effort : une base Postgres momentanement injoignable
-    # ne doit pas faire echouer une reponse /predict deja calculee avec succes
+    # une base Postgres momentanément injoignable ne doit pas faire échouer une réponse /predict déjà calculeé avec succès
     try:
         log_prediction_call(*args, **kwargs)
     except psycopg.OperationalError as exc:
@@ -153,9 +142,7 @@ def _safe_log_prediction_call(*args: Any, **kwargs: Any) -> None:
 
 
 def _build_feature_array(records: list[dict[str, Any]], feature_names: list[str]) -> np.ndarray:
-    """Construit le tableau numpy attendu par le Booster, dans l'ordre exact
-    des features d'entrainement. Pas de pd.DataFrame : c'est justement ce
-    detour par pandas + LGBMClassifier qu'on court-circuite ici (cf. profiling)."""
+    """Construit le tableau numpy attendu par le Booster, dans l'ordre exact des features d'entrainement."""
     if not records:
         return np.empty((0, len(feature_names)), dtype=np.float64)
     try:
@@ -183,7 +170,7 @@ class PredictResponse(BaseModel):
     threshold: float
 
 
-@app.get("/health", summary="Verifie que l'API est en ligne")
+@app.get("/health", summary="Vérifie que l'API est en ligne")
 def health() -> dict[str, str]:
     return {"status": "ok"}
 
@@ -191,11 +178,11 @@ def health() -> dict[str, str]:
 @app.post(
     "/predict",
     response_model=PredictResponse,
-    summary="Calcule la probabilite de defaut d'un ou plusieurs clients",
+    summary="Calcule la probabilite de défault d'un ou plusieurs clients",
     dependencies=[Depends(require_api_key)],
     responses={
-        401: {"model": ErrorResponse, "description": "Cle API manquante ou invalide"},
-        422: {"model": ErrorResponse, "description": "Donnees d'entree invalides (colonnes manquantes ou mal typees)"},
+        401: {"model": ErrorResponse, "description": "Clef API manquante ou invalide"},
+        422: {"model": ErrorResponse, "description": "Données d'entrée invalides (colonnes manquantes ou mal typées)"},
         503: {"model": ErrorResponse, "description": "Modele indisponible (Model Registry MLflow inaccessible)"},
     },
 )
@@ -217,7 +204,7 @@ def predict(
             except LightGBMError as exc:
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Donnees d'entree invalides pour le modele : {exc}",
+                    detail=f"Données d'entrée invalides pour le modèle : {exc}",
                 ) from exc
 
         decisions = ["REFUSE" if p > DECISION_THRESHOLD else "ACCORDE" for p in probabilities]

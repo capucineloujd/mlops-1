@@ -8,10 +8,6 @@ PORT="${PORT:-8000}"
 HEALTH_URL="http://localhost:${PORT}/health"
 MAX_RETRIES=20
 
-# API_KEY vient normalement d'un secret (GitHub Actions : secrets.API_KEY).
-# En local, si rien n'est fourni, on en genere une ephemere pour que le
-# deploiement simule reste utilisable en autonomie, sans jamais l'ecrire
-# dans un fichier ni la logger en clair au-dela de ce message.
 if [ -z "${API_KEY:-}" ]; then
   API_KEY="$(openssl rand -hex 16)"
   echo "[info] API_KEY non fournie : cle ephemere generee pour ce deploiement."

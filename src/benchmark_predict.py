@@ -30,7 +30,7 @@ def build_sample_record() -> dict:
 
 if __name__ == "__main__":
     if not API_KEY:
-        raise SystemExit("API_KEY doit etre definie (meme cle que celle utilisee par l'API en cours d'execution)")
+        raise SystemExit("API_KEY doit être définie (même clef que celle utilisée par l'API en cours d'execution)")
 
     headers = {"X-API-Key": API_KEY, "Content-Type": "application/json"}
     payload = {"records": [build_sample_record()]}

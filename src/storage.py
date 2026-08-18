@@ -42,9 +42,6 @@ def log_prediction_call(
     database_url: str | None = None,
 ) -> None:
     """Enregistre un appel /predict (succes ou echec) : input, output, latence.
-
-    Donnee cle pour l'analyse en aval (derive des donnees, taux d'erreur,
-    latence anormale) -> voir src/monitoring.py.
     """
     url = _database_url(database_url)
     with psycopg.connect(url) as conn:
@@ -69,8 +66,7 @@ def log_prediction_call(
 
 
 def load_calls_df(database_url: str | None = None, limit: int = 500) -> pd.DataFrame:
-    """Charge les derniers appels enregistres sous forme de DataFrame
-    (timestamp, statut, latence...), pour les besoins d'affichage (dashboard)."""
+    """Charge les derniers appels enregistres sous forme de DataFrame"""
     url = _database_url(database_url)
     with psycopg.connect(url, row_factory=dict_row) as conn:
         conn.execute(_SCHEMA)
@@ -86,8 +82,7 @@ def load_calls_df(database_url: str | None = None, limit: int = 500) -> pd.DataF
 
 
 def load_rows(database_url: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
-    """Charge les derniers appels sous forme de liste de dicts (utilise par
-    monitoring.py et drift_analysis.py, qui n'ont pas besoin d'un DataFrame complet)."""
+    """Charge les derniers appels sous forme de liste de dicts"""
     url = _database_url(database_url)
     with psycopg.connect(url, row_factory=dict_row) as conn:
         conn.execute(_SCHEMA)
@@ -100,8 +95,7 @@ def load_rows(database_url: str | None = None, limit: int = 200) -> list[dict[st
 
 
 def load_successful_inputs(database_url: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
-    """Charge les input_json des derniers appels REUSSIS (utilise par
-    drift_analysis.py : seuls les appels qui ont atteint le modele comptent)."""
+    """Charge les input_json des derniers appels réussi"""
     url = _database_url(database_url)
     with psycopg.connect(url) as conn:
         conn.execute(_SCHEMA)

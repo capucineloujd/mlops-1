@@ -49,8 +49,7 @@ if __name__ == "__main__":
     array_f64 = np.zeros((1, n_features), dtype=np.float64)
     array_f32 = array_f64.astype(np.float32)
 
-    # verification de precision AVANT de comparer la latence : un gain de
-    # vitesse ne vaut rien si les predictions divergent
+    # verification de precision AVANT de comparer la latence 
     proba_native = native_model.booster_.predict(array_f64)[0]
     onnx_output = session.run(None, {"input": array_f32})
     proba_onnx = onnx_output[1][0][1]  # dict {classe: proba} pour la ligne 0

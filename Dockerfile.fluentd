@@ -1,0 +1,11 @@
+FROM fluent/fluentd:v1.16-1
+
+USER root
+RUN apk add --no-cache --update build-base ruby-dev postgresql-dev \
+    && gem install fluent-plugin-sql --no-document \
+    && gem install pg --no-document \
+    && apk del build-base ruby-dev
+
+COPY fluentd/fluent.conf /fluentd/etc/fluent.conf
+
+USER fluent

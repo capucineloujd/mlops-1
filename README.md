@@ -74,6 +74,8 @@ En local/CI, Postgres tourne dans un conteneur dédié (`docker-compose.yml`, se
 
 --> Ce que ces données permettent : c'est la source unique de vérité pour `monitoring.py` (taux d'erreur, latence), `drift_analysis.py` (dérive des données), `dashboard.py` (visualisation), et le profiling de performance ci-dessous - stocker à la fois l'input, l'output et la latence était le prérequis explicite du sujet pour permettre cette analyse a posteriori.
 
+--> Collecte des logs applicatifs avec Fluentd : en plus de `prediction_logs` (écrit directement par l'API), les logs JSON structurés émis sur stdout (`_log()` dans `src/api.py` : `model_loaded`, `auth_failed`, `validation_rejected`...) sont collectés par Fluentd (`Dockerfile.fluentd`, `fluentd/fluent.conf`) via le driver de logging Docker natif, puis écrits dans une table Postgres séparée (`application_logs`, cf. `postgres-init/01_application_logs.sql`). Les deux canaux sont volontairement distincts : `prediction_logs` est alimenté directement par l'API pour l'analyse structurée (drift, latence), `application_logs` capture tous les événements applicatifs via un vrai pipeline de collecte de logs, découplé du code de l'API elle-même. Testé de bout en bout (`docker compose up`, appel réel, vérification `psql` que la ligne apparaît dans `application_logs` avec le bon `event` et `log_time`).
+
 **Limites connues, non traitées** :
 - **Pas de politique de rétention** : les logs s'accumulent indéfiniment, aucune purge automatique.
 - **Pas de chiffrement au repos** configuré par défaut sur le conteneur Postgres local.

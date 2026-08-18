@@ -9,11 +9,22 @@ services:
       - "5433:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mlops"]
       interval: 5s
       timeout: 5s
       retries: 5
+
+  fluentd:
+    build:
+      context: .
+      dockerfile: Dockerfile.fluentd
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "24224:24224"
 
   mlflow-server:
     build:
@@ -32,8 +43,16 @@ services:
         condition: service_started
       postgres:
         condition: service_healthy
+      fluentd:
+        condition: service_started
     ports:
       - "8000:8000"
+    logging:
+      driver: fluentd
+      options:
+        fluentd-address: localhost:24224
+        tag: docker.api
+        fluentd-async: "true"
     environment:
       MLFLOW_TRACKING_URI: http://mlflow-server:5000
       MODEL_URI: models:/lightgbm-credit-scoring@gagnant

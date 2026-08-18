@@ -13,12 +13,14 @@ import time
 import mlflow.lightgbm
 import mlflow.pyfunc
 import pandas as pd
+import psutil
 
 from monitoring import analyze
 
 MODEL_URI = os.environ.get("MODEL_URI", "models:/lightgbm-credit-scoring-serving@gagnant")
 N_RUNS = 200
 N_WARMUP = 20
+CPU_MEASURE_DURATION_S = 2.0  # duree min. de charge soutenue pour une lecture CPU stable
 
 mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"))
 
@@ -73,6 +75,20 @@ def _time_stage(fn, n_runs: int = N_RUNS, n_warmup: int = N_WARMUP) -> dict[str,
         "median_ms": round(durations[len(durations) // 2], 4),
         "p95_ms": round(durations[int(len(durations) * 0.95)], 4),
     }
+
+
+def measure_cpu_usage(fn, min_duration_s: float = CPU_MEASURE_DURATION_S) -> float:
+    """Mesure le % CPU du process pendant une charge soutenue (pas sur une
+    requete isolee : psutil.cpu_percent() a besoin d'une fenetre de temps
+    suffisante pour donner une lecture stable, pas juste quelques ms)."""
+    process = psutil.Process()
+    process.cpu_percent(interval=None)  # amorce la mesure (1er appel toujours 0.0)
+
+    start = time.perf_counter()
+    while time.perf_counter() - start < min_duration_s:
+        fn()
+
+    return process.cpu_percent(interval=None)
 
 
 def build_sample_record(schema) -> dict:
@@ -144,3 +160,10 @@ if __name__ == "__main__":
     raw_mean = results["Predict LightGBM natif (sans mlflow pyfunc)"]["mean_ms"]
     overhead_pct = round((pyfunc_mean - raw_mean) / pyfunc_mean * 100, 1)
     print(f"\nOverhead du wrapper mlflow pyfunc : {overhead_pct}% du temps de predict total")
+
+    print(f"\n=== Utilisation CPU (process, charge soutenue {CPU_MEASURE_DURATION_S}s) ===")
+    cpu_pyfunc = measure_cpu_usage(lambda: pyfunc_model.predict(df_pyfunc))
+    cpu_native = measure_cpu_usage(lambda: raw_lgbm_model.predict_proba(df_native))
+    print(f"Predict via wrapper pyfunc : {cpu_pyfunc}% CPU (1 coeur = 100%)")
+    print(f"Predict LightGBM natif     : {cpu_native}% CPU (1 coeur = 100%)")
+    print(f"CPU logiques disponibles   : {psutil.cpu_count()}")

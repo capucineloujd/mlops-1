@@ -19,7 +19,7 @@ def load_reference(reference_path: str | None = None) -> pd.DataFrame:
 def load_current_from_logs(
     database_url: str | None = None, window: int = 200, columns: list[str] | None = None
 ) -> pd.DataFrame:
-    """Reconstruit un DataFrame des inputs recents a partir des appels /predict
+    """Reconstruit un DataFrame des inputs récents à partir des appels /predict
     réussis (les rejets métier/schéma n'ont jamais atteint le modèle)."""
     input_jsons = load_successful_inputs(database_url, window)
 
@@ -47,7 +47,7 @@ def run_drift_report(reference: pd.DataFrame, current: pd.DataFrame) -> Report:
 
 
 def summarize(result) -> dict:
-    """Extrait un resume exploitable du resultat brut Evidently."""
+    """Extrait un résume exploitable du resultat brut Evidently."""
     metrics = result.dict()["metrics"]
 
     summary = {"n_drifted_columns": None, "drift_share": None, "drifted_columns": [], "column_drift": {}}
@@ -63,8 +63,8 @@ def summarize(result) -> dict:
             method = m["config"].get("method", "")
             threshold = m["config"].get("threshold", 0.1)
             summary["column_drift"][column] = value
-            # methodes en p-value (K-S, chi2...) : derive si value < threshold
-            # methodes en distance (Wasserstein, Jensen-Shannon...) : derive si value > threshold
+            # méthodes en p-value : derive si value < threshold
+            # méthodes en distance : derive si value > threshold
             is_drifted = value < threshold if "p_value" in method else value > threshold
             if is_drifted:
                 summary["drifted_columns"].append(column)

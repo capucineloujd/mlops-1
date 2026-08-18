@@ -43,28 +43,20 @@ def profile_calls(fn, n_runs: int, label: str) -> None:
 
 
 if __name__ == "__main__":
-    print("Chargement du modele...")
+    print("Chargement du modèle...")
     pyfunc_model = mlflow.pyfunc.load_model(MODEL_URI_PYFUNC)
-    # meme artefact sous-jacent que le wrapper pyfunc (pas un modele charge
-    # separement depuis un autre run, qui pourrait avoir un encodage
-    # one-hot legerement different)
     native_model = pyfunc_model.unwrap_python_model().model
 
-    # deux DataFrames distincts : le booster LightGBM sanitize en interne les
-    # espaces/virgules dans les noms de colonnes (ex: "Business Entity Type 2"
-    # -> "Business_Entity_Type_2"), donc feature_name_ (natif) et le schema
-    # enregistre par mlflow.pyfunc (noms originaux) divergent sur ~143/710
-    # colonnes categorielles. Voir le README pour le risque que ca souleve.
     schema_inputs = pyfunc_model.metadata.get_input_schema().inputs
     schema_names = [c.name for c in schema_inputs]
     boolean_names = {c.name for c in schema_inputs if str(c.type) == "DataType.boolean"}
     df_pyfunc = pd.DataFrame([build_sample_record(schema_names, boolean_names)])
     df_native = pd.DataFrame([build_sample_record(native_model.feature_name_)])
 
-    # warmup (evite de profiler le cout de chargement/JIT/cache a froid)
+    # warmup
     for _ in range(10):
         pyfunc_model.predict(df_pyfunc)
         native_model.predict_proba(df_native)
 
     profile_calls(lambda: pyfunc_model.predict(df_pyfunc), N_RUNS, "Predict via wrapper mlflow.pyfunc")
-    profile_calls(lambda: native_model.predict_proba(df_native), N_RUNS, "Predict LightGBM natif")
+    profile_calls(lambda: native_model.predict_proba(df_native), N_RUNS, "Predict LightGBM natifs")

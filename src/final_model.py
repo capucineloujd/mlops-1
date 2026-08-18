@@ -14,7 +14,7 @@ from sklearn.metrics import roc_auc_score, roc_curve, recall_score, precision_sc
 MODEL_NAME = "lightgbm-credit-scoring"
 SERVING_MODEL_NAME = "lightgbm-credit-scoring-serving"
 
-# Meilleurs hyperparametres trouves par Optuna (30 trials, coût métier 29915)
+# Meilleurs hyperparamètres trouves par Optuna 
 BEST_PARAMS = {
     "n_estimators": 398,
     "max_depth": 3,
@@ -33,7 +33,7 @@ BEST_PARAMS = {
 def load_data(path: str = "data/train_engineered.csv") -> tuple[pd.DataFrame, pd.Series]:
     df = pd.read_csv(path)
 
-    # LightGBM ne supporte pas les caracteres speciaux JSON dans les noms de colonnes
+    # LightGBM ne supporte pas les caracteres séeciaux JSON dans les noms de colonnes
     df.columns = df.columns.str.replace(r'[\[\]{},:"\'\\]', "_", regex=True)
 
     X = df.drop(columns=["TARGET", "SK_ID_CURR"])
@@ -52,14 +52,14 @@ def cout_metier(y_true, y_pred, cout_fn: int = 10, cout_fp: int = 1) -> float:
     return cout_fn * fn + cout_fp * fp
 
 
-# Seuil qui minimise le cout métier 
+# Seuil qui minimise le coût métier 
 def seuil_optimal(y_true, y_pred_proba) -> float:
     _, _, thresholds = roc_curve(y_true, y_pred_proba, drop_intermediate=False)
     couts = [cout_metier(y_true, (y_pred_proba > t).astype(int)) for t in thresholds]
     return float(thresholds[np.argmin(couts)])
 
 
-# Wrapper pyfunc : retourne des probabilites de defaut, pour un serving REST agnostique du client 
+# Wrapper pyfunc : retourne des probabilités de défault, pour un serving REST agnostique du client 
 class LGBMProbaWrapper(mlflow.pyfunc.PythonModel):
 
     def load_context(self, context):
@@ -70,7 +70,7 @@ class LGBMProbaWrapper(mlflow.pyfunc.PythonModel):
 
 
 def train_and_register(data_path: str = "data/train_engineered.csv") -> None:
-    """Entraine le modele final, l'enregistre dans le Model Registry avec l'alias gagnant, puis enregistre le wrapper
+    """Entraîne le modèle final, l'enregistre dans le Model Registry avec l'alias gagnant, puis enregistre le wrapper
     pyfunc de serving associé."""
     X, y = load_data(data_path)
     X_train, X_val, y_train, y_val = train_test_split(
@@ -85,7 +85,7 @@ def train_and_register(data_path: str = "data/train_engineered.csv") -> None:
     with mlflow.start_run(
         run_name="lightgbm_final",
         tags={"type": "optuna_best", "seuil": "optimise_cout_metier"},
-        description="Modele final : LightGBM + meilleurs hyperparametres Optuna, seuil optimise sur le cout metier",
+        description="Modèle final : LightGBM + meilleurs hyperparamètres Optuna, seuil optimisé sur le coût métier",
     ):
         model.fit(X_train, y_train)
 
@@ -125,7 +125,7 @@ def _register_serving_wrapper(model: LGBMClassifier, X_val: pd.DataFrame) -> Non
         with mlflow.start_run(
             run_name="lightgbm_pyfunc_serving",
             tags={"type": "serving"},
-            description="Wrapper pyfunc du modele final pour serving REST (retourne des probabilites)",
+            description="Wrapper pyfunc du modèle final pour serving REST (retourne des probabilités)",
         ):
             model_info = mlflow.pyfunc.log_model(
                 artifact_path="model",

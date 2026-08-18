@@ -115,9 +115,9 @@ def _check_data_drift(rows: list[dict[str, Any]], report: Report, reference_path
                     check="data_drift",
                     severity="warning",
                     message=(
-                        f"Derive detectee sur '{field_name}' (test KS, p-value={p_value:.4f} "
-                        f"< {DRIFT_PVALUE_THRESHOLD}) : la distribution recente differe "
-                        f"significativement des donnees d'entrainement"
+                        f"Dérive détectée sur '{field_name}' (test KS, p-value={p_value:.4f} "
+                        f"< {DRIFT_PVALUE_THRESHOLD}) : la distribution récente diffère "
+                        f"significativement des données d'entraînement"
                     ),
                 )
             )
@@ -126,7 +126,7 @@ def _check_data_drift(rows: list[dict[str, Any]], report: Report, reference_path
 def analyze(
     database_url: str | None = None, reference_path: str | None = None, window: int = 200
 ) -> Report:
-    """Analyse les window derniers appels enregistres en base."""
+    """Analyse les window derniers appels enregistrés en base."""
     ref_path = reference_path or _REFERENCE_PATH
 
     rows = _load_recent_calls(database_url, window)
@@ -146,8 +146,8 @@ if __name__ == "__main__":
     print(f"Latence moyenne : {result.latency_mean_ms}ms | p95 : {result.latency_p95_ms}ms")
     print(f"Drift (p-values): {result.drift}")
     if result.anomalies:
-        print(f"\n{len(result.anomalies)} anomalie(s) detectee(s) :")
+        print(f"\n{len(result.anomalies)} anomalie(s) détectée(s) :")
         for a in result.anomalies:
             print(f"  [{a.severity.upper()}] {a.check} : {a.message}")
     else:
-        print("\nAucune anomalie detectee.")
+        print("\nAucune anomalie détectée.")

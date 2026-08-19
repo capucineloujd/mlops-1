@@ -1,21 +1,10 @@
-#données car lourdes
 data/
-
-# tracking MLflow (local, régénéré à chaque run)
 mlflow.db
 mlruns/
-
-# rapports de couverture de tests (régénérés à chaque run)
 .coverage
 coverage.xml
 htmlcov/
-
-# secrets locaux
 .env
-
-# bytecode Python compile
 __pycache__/
 *.pyc
-
-# rapport de drift genere (cf. src/drift_analysis.py)
 drift_report.html

@@ -11,21 +11,21 @@ class TestCoutMetier:
         assert cout_metier(y_true, y_pred) == 0
 
     def test_un_faux_negatif(self):
-        # client a risque (1) predit comme sain (0) -> coute cout_fn (10 par defaut)
+        # client a risque prédit comme sain -> coûte cout_fn (10 par défaut)
         y_true = np.array([1])
         y_pred = np.array([0])
         assert cout_metier(y_true, y_pred) == 10
 
     def test_un_faux_positif(self):
-        # bon client (0) predit comme a risque (1) -> coute cout_fp (1 par defaut)
+        # bon client prédit comme à risque-> coûte cout_fp (1 par défaut)
         y_true = np.array([0])
         y_pred = np.array([1])
         assert cout_metier(y_true, y_pred) == 1
 
     def test_asymetrie_fn_plus_couteux_que_fp(self):
         y_true = np.array([1, 0])
-        y_pred_fn = np.array([0, 0])  # un FN, zero FP
-        y_pred_fp = np.array([1, 1])  # zero FN, un FP
+        y_pred_fn = np.array([0, 0])  # un FN, 0 FP
+        y_pred_fp = np.array([1, 1])  # 0 FN, un FP
         assert cout_metier(y_true, y_pred_fn) > cout_metier(y_true, y_pred_fp)
 
     def test_couts_personnalises(self):
@@ -41,8 +41,7 @@ class TestCoutMetier:
 
 class TestSeuilOptimal:
     def test_separation_parfaite_donne_seuil_qui_minimise_le_cout(self):
-        # classes parfaitement separees par la proba : le seuil optimal
-        # doit conduire a un cout metier nul
+        # classes parfaitement séparées par la proba : le seuil optimal doit conduire à un coût métier nul
         y_true = np.array([0, 0, 0, 1, 1, 1])
         y_pred_proba = np.array([0.1, 0.2, 0.3, 0.7, 0.8, 0.9])
 
@@ -60,8 +59,7 @@ class TestSeuilOptimal:
         assert 0.0 <= seuil <= 1.0
 
     def test_favorise_le_recall_vu_le_cout_asymetrique(self):
-        # avec FN 10x plus couteux qu'un FP, le seuil optimal doit rester
-        # bas (quitte a generer des FP) plutot que de rater des defauts
+        # avec FN 10x plus coûteux qu'un FP, le seuil optimal doit rester bas (quitte a generer des FP) plutot que de râter des défauts
         y_true = np.array([0, 0, 0, 0, 1, 1])
         y_pred_proba = np.array([0.15, 0.25, 0.35, 0.55, 0.5, 0.6])
 

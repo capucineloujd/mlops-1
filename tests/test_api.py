@@ -1,5 +1,4 @@
 from typing import ClassVar
-
 import numpy as np
 import psycopg
 import pytest
@@ -11,9 +10,7 @@ AUTH_HEADERS = {"X-API-Key": API_KEY}
 
 
 class FakeModel:
-    """Modele factice. Reproduit l'interface reellement utilisee par
-    src/api.py depuis le bypass de pandas/sklearn (feature_name_ +
-    booster_.predict sur un tableau numpy), cf. profiling."""
+    """Modèle factice"""
 
     feature_name_: ClassVar[list[str]] = ["EXT_SOURCE_2"]
 
@@ -38,8 +35,8 @@ def override_model(probabilities):
 
 
 class TestStockageDesAppels:
-    """Verifie que chaque appel /predict (succes et echec) est bien
-    persisté en base (PostgreSQL), cf. src/storage.py."""
+    """Vérifie que chaque appel /predict (succès et échec) est bien
+    persisté en base PostgreSQL"""
 
     @pytest.fixture
     def logged_client(self, test_db, monkeypatch):
@@ -199,7 +196,7 @@ class TestValidationMetier:
         assert response.status_code == 422
 
     def test_age_impossible_rejete(self, client):
-        # DAYS_BIRTH doit etre negatif (convention Home Credit)
+        # DAYS_BIRTH doit être néégatif (convention Home Credit)
         override_model([0.5])
 
         response = client.post("/predict", json={"records": [{"DAYS_BIRTH": 5}]})
@@ -225,7 +222,7 @@ class TestValidationMetier:
         assert "AMT_INCOME_TOTAL" in response.json()["detail"]
 
     def test_champ_critique_absent_ne_bloque_pas(self, client):
-        # les règles metier ne s'appliquent que si le champ est présent
+        # les règles métier ne s'appliquent que si le champ est présent
         override_model([0.5])
 
         response = client.post("/predict", json={"records": [{"EXT_SOURCE_2": 0.5}]})
@@ -251,8 +248,7 @@ class TestValidationMetier:
 
 
 class TestPredictAvecLeVraiModele:
-    """Test d'integration bout-en-bout avec le vrai modele chargé depuis
-    Model Registry MLflow."""
+    """Test d'integration bout-en-bout"""
 
     @pytest.fixture(autouse=True)
     def _skip_if_no_model(self):

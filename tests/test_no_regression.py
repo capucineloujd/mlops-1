@@ -13,7 +13,7 @@ def pyfunc_model():
     try:
         return mlflow.pyfunc.load_model("models:/lightgbm-credit-scoring-serving@gagnant")
     except Exception as exc:
-        pytest.skip(f"Modele MLflow indisponible : {exc}")
+        pytest.skip(f"Modeèe MLflow indisponible : {exc}")
 
 
 def _build_records(pyfunc_model, values: dict) -> tuple[dict, dict]:

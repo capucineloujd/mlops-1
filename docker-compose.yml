@@ -58,13 +58,10 @@ services:
       MODEL_URI: models:/lightgbm-credit-scoring@gagnant
       DECISION_THRESHOLD: "0.499"
       DATABASE_URL: postgresql://mlops:mlops@postgres:5432/mlops
-      # lue depuis un fichier .env local
-      # jamais de valeur en dur ici
+      # lue depuis .env 
       API_KEY: "${API_KEY:?API_KEY manquante, copie .env.example vers .env et renseigne-la}"
     volumes:
-      # les runs existants ont un artifact_uri en chemin disque local (pas
-      # mlflow-artifacts://), donc le telechargement du modele se fait en
-      # acces disque direct meme via un tracking server HTTP dedie
+      # le téléchargement du modèle se fait en accès disque direct même via un tracking server HTTP dédié
       - ./mlruns:/Users/capucinejaud/mlops-1/mlruns
 
 volumes:

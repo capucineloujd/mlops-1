@@ -49,6 +49,8 @@ omit = [
     "src/profile_cprofile.py",
     "src/profile_inference.py",
     "src/dashboard.py",
+    "src/generate_demo_predictions.py",
+    "src/seed_demo_data.py",
 ]
 
 [tool.coverage.report]

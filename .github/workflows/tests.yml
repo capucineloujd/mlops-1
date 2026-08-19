@@ -64,11 +64,12 @@ jobs:
   deploy:
     needs: build-docker
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Deploy sur l'environnement cible simule (le runner lui-meme)
+      - name: Deploy sur l'environnement ciblé simulé
         env:
           API_KEY: ${{ secrets.API_KEY }}
         run: ./deploy/deploy.sh

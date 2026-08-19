@@ -41,11 +41,9 @@ def log_prediction_call(
     error_detail: str | None = None,
     database_url: str | None = None,
 ) -> None:
-    """Enregistre un appel /predict (succes ou echec) : input, output, latence.
-    """
     url = _database_url(database_url)
     with psycopg.connect(url) as conn:
-        conn.execute(_SCHEMA)  # idempotent, evite un init_db() explicite obligatoire
+        conn.execute(_SCHEMA)  # idempotent, évite un init_db() obligatoire
         conn.execute(
             """
             INSERT INTO prediction_logs
@@ -66,7 +64,6 @@ def log_prediction_call(
 
 
 def load_calls_df(database_url: str | None = None, limit: int = 500) -> pd.DataFrame:
-    """Charge les derniers appels enregistres sous forme de DataFrame"""
     url = _database_url(database_url)
     with psycopg.connect(url, row_factory=dict_row) as conn:
         conn.execute(_SCHEMA)
@@ -82,7 +79,6 @@ def load_calls_df(database_url: str | None = None, limit: int = 500) -> pd.DataF
 
 
 def load_rows(database_url: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
-    """Charge les derniers appels sous forme de liste de dicts"""
     url = _database_url(database_url)
     with psycopg.connect(url, row_factory=dict_row) as conn:
         conn.execute(_SCHEMA)
@@ -95,7 +91,6 @@ def load_rows(database_url: str | None = None, limit: int = 200) -> list[dict[st
 
 
 def load_successful_inputs(database_url: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
-    """Charge les input_json des derniers appels réussi"""
     url = _database_url(database_url)
     with psycopg.connect(url) as conn:
         conn.execute(_SCHEMA)

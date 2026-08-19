@@ -5,7 +5,6 @@ import time
 from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Any
-
 import mlflow.lightgbm
 import numpy as np
 import psycopg
@@ -15,7 +14,6 @@ from lightgbm import LGBMClassifier
 from lightgbm.basic import LightGBMError
 from mlflow.exceptions import MlflowException
 from pydantic import BaseModel
-
 from storage import init_db, log_prediction_call
 
 
@@ -42,12 +40,12 @@ def require_api_key(provided_key: str | None = Security(_api_key_header)) -> Non
     if not API_KEY:
         raise HTTPException(
             status_code=500,
-            detail="API_KEY n'est pas configuree cote serveur : l'API ne peut pas etre securisee.",
+            detail="API_KEY n'est pas configurée côté serveur : l'API ne peut pas être séécurisée.",
         )
     if provided_key != API_KEY:
         # jamais la clef recue dans les logs, seulement le fait qu'elle est invalide
         _log("auth_failed", reason="missing_or_invalid_key")
-        raise HTTPException(status_code=401, detail="Cle API manquante ou invalide (header X-API-Key)")
+        raise HTTPException(status_code=401, detail="Clef API manquante ou invalide (header X-API-Key)")
 
 mlflow.set_tracking_uri(os.environ.get("MLFLOW_TRACKING_URI", "sqlite:///mlflow.db"))
 
@@ -59,7 +57,7 @@ def _load_model() -> LGBMClassifier:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    # best-effort : si la base Postgres ou le Model Registry sont indisponibles au demarrage, l'API demarre quand même
+    # best-effort : si la base Postgres ou le Model Registry sont indisponibles au demarrage, l'API démarre quand même
     try:
         init_db()
     except psycopg.OperationalError as exc:
@@ -75,7 +73,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="Home Credit - Scoring API",
-    description="Expose le modele de scoring credit (LightGBM, optimise Optuna) via une API REST.",
+    description="Expose le modèle de scoring credit (LightGBM, optimisé via Optuna) via une API REST.",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -86,21 +84,21 @@ class ErrorResponse(BaseModel):
 
 
 def get_model() -> LGBMClassifier:
-    """Charge le modèle LightGBM natif depuis le Model Registry MLflow (une seule fois, mis en cache)."""
+    """Charge le modèle LightGBM natif depuis le Model Registry MLflow (une seule fois puis mis en cache)."""
     try:
         return _load_model()
     except MlflowException as exc:
         _log("model_unavailable", model_uri=MODEL_URI, reason=str(exc))
         raise HTTPException(
             status_code=503,
-            detail=f"Modele indisponible dans le Model Registry MLflow : {exc.message}",
+            detail=f"Modèle indisponible dans le Model Registry MLflow : {exc.message}",
         ) from exc
 
 
 _BUSINESS_RULES: dict[str, tuple[str, Any]] = {
     "AMT_INCOME_TOTAL": (">", 0),  # revenu strictement positif
-    "AMT_CREDIT": (">", 0),  # montant du credit strictement positif
-    "DAYS_BIRTH": ("<", 0),  # convention Home Credit : jours negatifs
+    "AMT_CREDIT": (">", 0),  # montant du crédit strictement positif
+    "DAYS_BIRTH": ("<", 0),  # convention Home Credit : jours négatifs
     "CNT_CHILDREN": (">=", 0),  # nombre d'enfants positif ou nul
 }
 
@@ -116,7 +114,7 @@ def _validate_business_rules(records: list[dict[str, Any]]) -> None:
                 _log("validation_rejected", field=field, index=i, reason="wrong_type")
                 raise HTTPException(
                     status_code=422,
-                    detail=f"Enregistrement {i} : '{field}' doit etre numerique, recu {value!r}",
+                    detail=f"Enregistrement {i} : '{field}' doit etre numérique, recu {value!r}",
                 )
 
             valid = {
@@ -134,7 +132,7 @@ def _validate_business_rules(records: list[dict[str, Any]]) -> None:
 
 
 def _safe_log_prediction_call(*args: Any, **kwargs: Any) -> None:
-    # une base Postgres momentanément injoignable ne doit pas faire échouer une réponse /predict déjà calculeé avec succès
+    # une base Postgres momentanément injoignable ne doit pas faire échouer une réponse /predict déjà calculeé avec success
     try:
         log_prediction_call(*args, **kwargs)
     except psycopg.OperationalError as exc:
@@ -142,7 +140,7 @@ def _safe_log_prediction_call(*args: Any, **kwargs: Any) -> None:
 
 
 def _build_feature_array(records: list[dict[str, Any]], feature_names: list[str]) -> np.ndarray:
-    """Construit le tableau numpy attendu par le Booster, dans l'ordre exact des features d'entrainement."""
+    """Construit le tableau numpy attendu par le Booster dans l'ordre exact des features d'entraînement."""
     if not records:
         return np.empty((0, len(feature_names)), dtype=np.float64)
     try:
@@ -156,7 +154,7 @@ def _build_feature_array(records: list[dict[str, Any]], feature_names: list[str]
         ) from exc
     except (TypeError, ValueError) as exc:
         raise HTTPException(
-            status_code=422, detail=f"Donnees invalides pour le modele : {exc}"
+            status_code=422, detail=f"Données invalides pour le modele : {exc}"
         ) from exc
 
 
@@ -178,12 +176,12 @@ def health() -> dict[str, str]:
 @app.post(
     "/predict",
     response_model=PredictResponse,
-    summary="Calcule la probabilite de défault d'un ou plusieurs clients",
+    summary="Calcule la probabilité de défault d'1 ou plusieurs clients",
     dependencies=[Depends(require_api_key)],
     responses={
         401: {"model": ErrorResponse, "description": "Clef API manquante ou invalide"},
         422: {"model": ErrorResponse, "description": "Données d'entrée invalides (colonnes manquantes ou mal typées)"},
-        503: {"model": ErrorResponse, "description": "Modele indisponible (Model Registry MLflow inaccessible)"},
+        503: {"model": ErrorResponse, "description": "Modèle indisponible (Model Registry MLflow inaccessible)"},
     },
 )
 def predict(

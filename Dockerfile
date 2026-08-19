@@ -1,19 +1,18 @@
 FROM python:3.11-slim
 
-# libgomp1 : requis par LightGBM (chargé via le modele pyfunc au runtime)
 RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* 
+# libgomp1 : requis par LightGBM 
 
-# uv : gestion des dépendances (voir pyproject.toml / uv.lock)
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
-# Dépendances d'abord pour profiter du cache Docker
+# dépendances d'abord pour profiter du cache Docker
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
-# Code source (le modèle final est chargé depuis le Model Registry MLflow)
+# Code source
 COPY src/ ./src/
 
 ENV MLFLOW_TRACKING_URI=sqlite:///mlflow.db

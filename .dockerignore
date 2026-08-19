@@ -1,24 +1,15 @@
-# donnees lourdes, jamais necessaires dans l'image (le modele vient du Model Registry MLflow)
 data/
 mlruns/
 mlflow.db
-
-# notebooks / exploration, hors scope de l'image de serving
 kernels/
 notebooks/
-
-# tests et outillage dev, non necessaires au runtime de l'API
 tests/
 deploy/
 .pytest_cache/
 .coverage
 coverage.xml
 htmlcov/
-
-# secrets locaux, jamais dans l'image
 .env
-
-# divers
 .git/
 .gitignore
 README.md

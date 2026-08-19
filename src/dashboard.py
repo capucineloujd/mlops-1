@@ -76,4 +76,4 @@ else:
         st.warning(f"Colonnes en dérive : {', '.join(drift_summary['drifted_columns'])}")
 
     with st.expander("Rapport Evidently detaille"):
-        components.html(result.get_html_str(), height=800, scrolling=True)
+        components.html(result.get_html_str(as_iframe=True), height=800, scrolling=True)

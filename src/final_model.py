@@ -30,7 +30,7 @@ BEST_PARAMS = {
 
 
 # On charge le jeu de données
-def load_data(path: str = "data/train_engineered.csv") -> tuple[pd.DataFrame, pd.Series]:
+def load_data(path: str = "data/train_engineered.csv") -> tuple[pd.DataFrame, pd.Series]:  # pragma: no cover
     df = pd.read_csv(path)
 
     # LightGBM ne supporte pas les caracteres séeciaux JSON dans les noms de colonnes
@@ -69,7 +69,7 @@ class LGBMProbaWrapper(mlflow.pyfunc.PythonModel):
         return self.model.predict_proba(model_input)[:, 1]
 
 
-def train_and_register(data_path: str = "data/train_engineered.csv") -> None:
+def train_and_register(data_path: str = "data/train_engineered.csv") -> None:  # pragma: no cover
     """Entraîne le modèle final, l'enregistre dans le Model Registry avec l'alias gagnant, puis enregistre le wrapper
     pyfunc de serving associé."""
     X, y = load_data(data_path)
@@ -114,7 +114,7 @@ def train_and_register(data_path: str = "data/train_engineered.csv") -> None:
     _register_serving_wrapper(model, X_val)
 
 
-def _register_serving_wrapper(model: LGBMClassifier, X_val: pd.DataFrame) -> None:
+def _register_serving_wrapper(model: LGBMClassifier, X_val: pd.DataFrame) -> None:  # pragma: no cover
     import os
     import tempfile
 
@@ -141,5 +141,5 @@ def _register_serving_wrapper(model: LGBMClassifier, X_val: pd.DataFrame) -> Non
     client.set_registered_model_alias(name=SERVING_MODEL_NAME, alias="gagnant", version=serving_version)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     train_and_register()

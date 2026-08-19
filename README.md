@@ -168,19 +168,24 @@ Les tests unitaires et d'intégration se lancent avec :
     uv run pytest tests/ --cov --cov-report=term-missing
 
 ```
-Name                 Stmts   Miss  Cover   Missing
---------------------------------------------------
-src/api.py              29      0   100%
-src/final_model.py      73     43    41%   34-45, 78-117, 121-144, 148
---------------------------------------------------
-TOTAL                  102     43    58%
+Name                    Stmts   Miss  Cover   Missing
+-----------------------------------------------------
+src/api.py                120     14    88%   43, 65-66, 71-72, 92-94, 140-141, 157-158, 204-205
+src/drift_analysis.py      58     12    79%   16, 76-93
+src/final_model.py         26      0   100%
+src/monitoring.py          87     13    85%   42, 96-97, 143-153
+src/storage.py             44      0   100%
+-----------------------------------------------------
+TOTAL                     335     39    88%
 ```
 
-`src/api.py` est couvert à 100% grâce aux tests d'intégration (`tests/test_api.py`) qui exercent chaque route (`/health`, `/predict`) avec un modèle factice injecté, indépendamment du vrai modèle MLflow.
+`src/api.py`, `src/storage.py`, `src/monitoring.py` et `src/drift_analysis.py` sont couverts par des tests unitaires et d'intégration (`tests/`) : routes de l'API avec un modèle factice injecté, stockage sur une base Postgres de test isolée, détection d'anomalies et de drift sur des jeux de données construits.
 
-`src/final_model.py` est à 41%, un taux volontairement bas : les fonctions testées unitairement (`cout_metier`, `seuil_optimal`) sont les seules à contenir de la logique métier critique et sont couvertes à 100%. Les 43 lignes non couvertes (`load_data`, `train_and_register`, `_register_serving_wrapper`) correspondent au pipeline d'entraînement et d'enregistrement MLflow ; du code d'orchestration qui lit des données lourdes (`data/train_engineered.csv`, env. 1,2 Go) et écrit dans le Model Registry. Le tester en continu demanderait soit de le ré-exécuter à chaque run de tests (coûteux en temps et en ressources, et non déterministe; cf. la variance de seuil observée entre deux runs), soit de le mocker intégralement, ce qui ne testerait plus que du câblage et non un vrai comportement. Ce code est donc validé manuellement (voir la section "Démarche de sélection du modèle") plutôt que par des tests automatisés.
+`src/final_model.py` exclut explicitement (`# pragma: no cover`) `load_data`, `train_and_register`, `_register_serving_wrapper` et le bloc `__main__` : ce pipeline d'entraînement et d'enregistrement MLflow lit des données lourdes (`data/train_engineered.csv`, env. 1,2 Go) et écrit dans le Model Registry. Le tester en continu demanderait soit de le ré-exécuter à chaque run de tests (coûteux en temps et en ressources, et non déterministe ; cf. la variance de seuil observée entre deux runs), soit de le mocker intégralement, ce qui ne testerait plus que du câblage et non un vrai comportement. Ce code est donc validé manuellement (voir la section "Démarche de sélection du modèle") plutôt que par des tests automatisés ; seules `cout_metier` et `seuil_optimal`, la logique métier critique, sont testées et comptent dans la couverture (100%).
 
-Un taux de couverture global à 58% n'est donc pas un signal d'alerte ici : il reflète une répartition volontaire entre code testé unitairement (logique métier pure) et code d'orchestration ML (entraînement, I/O, MLflow) validé autrement.
+Les scripts exécutés manuellement (`src/dashboard.py`, `src/benchmark_onnx.py`, `src/benchmark_predict.py`, `src/profile_cprofile.py`, `src/profile_inference.py`) sont exclus de la mesure (`omit` dans `pyproject.toml`) : ce sont des outils d'exploration/mesure ponctuels, pas du code applicatif couvert par la suite de tests automatisée.
+
+Le taux de couverture global de 88% reflète donc fidèlement le code applicatif réellement testé automatiquement, une fois écarté ce qui est intentionnellement validé autrement (entraînement/registry ML, outils manuels).
 
 ## Dépendances
 

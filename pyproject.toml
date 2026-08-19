@@ -43,6 +43,13 @@ pythonpath = ["src"]
 
 [tool.coverage.run]
 source = ["src"]
+omit = [
+    "src/benchmark_onnx.py",
+    "src/benchmark_predict.py",
+    "src/profile_cprofile.py",
+    "src/profile_inference.py",
+    "src/dashboard.py",
+]
 
 [tool.coverage.report]
 show_missing = true

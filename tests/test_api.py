@@ -35,8 +35,7 @@ def override_model(probabilities):
 
 
 class TestStockageDesAppels:
-    """Vérifie que chaque appel /predict (succès et échec) est bien
-    persisté en base PostgreSQL"""
+    """Vérifie que chaque appel /predict (succès et échec) est bien persisté en base PostgreSQL"""
 
     @pytest.fixture
     def logged_client(self, test_db, monkeypatch):
@@ -248,19 +247,19 @@ class TestValidationMetier:
 
 
 class TestPredictAvecLeVraiModele:
-    """Test d'integration bout-en-bout"""
+    """Test d'intégration bout-en-bout"""
 
     @pytest.fixture(autouse=True)
     def _skip_if_no_model(self):
         try:
             get_model()
         except Exception as exc:
-            pytest.skip(f"Modele MLflow indisponible : {exc}")
+            pytest.skip(f"Modèle MLflow indisponible : {exc}")
 
     def test_predict_avec_un_seul_client(self, client):
         model = get_model()
         record = {name: 0.0 for name in model.feature_name_}
-        # 0.0 partout n'est pas metier-plausible pour ces champs: on les corrige pour un client factice mais valide
+        # 0.0 partout n'est pas plausible pour ces champs: on les corrige pour un client factice mais valide
         record.update(
             {
                 "AMT_INCOME_TOTAL": 50000.0,

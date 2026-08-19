@@ -1,7 +1,5 @@
 import json
-
 import pytest
-
 from monitoring import analyze
 from storage import log_prediction_call
 
@@ -82,7 +80,7 @@ class TestDataDrift:
         assert not any(a.check == "data_drift" for a in report.anomalies)
 
     def test_donnees_tres_differentes_de_la_reference_declenchent_une_alerte(self, test_db, reference_path):
-        # revenus 100x plus eleves que toute la reference (drift evident)
+        # revenus 100x plus élevés que toute la référence ==> drift obvious
         for _ in range(40):
             log_prediction_call(
                 [{"AMT_INCOME_TOTAL": 5_000_000}],

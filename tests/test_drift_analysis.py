@@ -58,7 +58,7 @@ class TestRunDriftReportEtSummarize:
         assert summary["n_drifted_columns"] == 0
 
     def test_derive_evidente_est_detectee(self, reference_df):
-        current = reference_df.copy() * 100  # revenus 100x plus eleves
+        current = reference_df.copy() * 100  # revenus 100x plus élevés
 
         result = run_drift_report(reference_df, current)
         summary = summarize(result)

@@ -62,7 +62,7 @@ def test_plusieurs_appels_sont_tous_enregistres(test_db):
 
 
 def test_log_prediction_call_sans_init_db_prealable(test_db):
-    # log_prediction_call doit creer la table toute seule si besoin
+    # log_prediction_call doit créer la table toute seule au besoin
     log_prediction_call([{"x": 1}], status="success", output={}, latency_ms=1.0, database_url=test_db)
 
     with psycopg.connect(test_db) as conn:
